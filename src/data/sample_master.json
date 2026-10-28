@@ -1,0 +1,14 @@
+[
+  { "name": "Dragon Blade", "category": "Sword", "rarity": "Mythic", "baseRap": 12500 },
+  { "name": "Cyber Scythe", "category": "Sword", "rarity": "Legendary", "baseRap": 8500 },
+  { "name": "Infinity Katana", "category": "Sword", "rarity": "Secret", "baseRap": 45000 },
+  { "name": "Glitch Katana", "category": "Sword", "rarity": "Rare", "baseRap": 3200 },
+  { "name": "Singularity Katana", "category": "Sword", "rarity": "Mythic", "baseRap": 18000 },
+  { "name": "Aetheria", "category": "Sword", "rarity": "Secret", "baseRap": 62000 },
+  { "name": "Dual Katana", "category": "Sword", "rarity": "Common", "baseRap": 150 },
+  { "name": "Shadow Scythe", "category": "Sword", "rarity": "Legendary", "baseRap": 9800 },
+  { "name": "Supernova", "category": "Explosion", "rarity": "Mythic", "baseRap": 14000 },
+  { "name": "Black Hole", "category": "Explosion", "rarity": "Secret", "baseRap": 55000 },
+  { "name": "Sakura Bloom", "category": "Explosion", "rarity": "Rare", "baseRap": 2100 },
+  { "name": "Giggle Emote", "category": "Emote", "rarity": "Common", "baseRap": 400 }
+]
