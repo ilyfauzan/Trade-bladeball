@@ -375,6 +375,58 @@ async function evaluateTrade() {
 function initCatalog() {
   const searchInput = document.getElementById('catalog-search-input');
   const clearBtn = document.getElementById('catalog-search-clear');
+  const triggerImportBtn = document.getElementById('btn-trigger-import');
+  const importFileInput = document.getElementById('input-import-file');
+
+  // File Import Handler
+  if (triggerImportBtn && importFileInput) {
+    triggerImportBtn.addEventListener('click', () => {
+      importFileInput.click();
+    });
+
+    importFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const json = JSON.parse(event.target.result);
+          triggerImportBtn.disabled = true;
+          triggerImportBtn.innerHTML = `<span>Mengunggah...</span>`;
+
+          const res = await fetch('/api/import-master', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(json)
+          });
+          const result = await res.json();
+
+          if (result.success) {
+            alert(`🎉 Berhasil mengimpor ${result.count.toLocaleString()} item ke katalog master!`);
+            fetchMarketStats();
+            loadCatalogItems();
+          } else {
+            alert(`❌ Gagal: ${result.error}`);
+          }
+        } catch (parseErr) {
+          alert(`❌ Format file tidak valid! Pastikan file adalah format JSON.`);
+        } finally {
+          triggerImportBtn.disabled = false;
+          triggerImportBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="import-icon">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <span>Impor JSON Master</span>
+          `;
+          importFileInput.value = '';
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
 
   const onSearch = debounce((val) => {
     state.catalog.search = val.trim();

@@ -64,6 +64,14 @@ const queries = {
     LIMIT @limit OFFSET @offset
   `),
 
+  importMasterStmt: db.prepare(`
+    INSERT INTO items (name, category, rarity, current_rap, clean_rap, status)
+    VALUES (@name, @category, @rarity, @current_rap, @clean_rap, 'NORMAL')
+    ON CONFLICT(name) DO UPDATE SET
+      category = COALESCE(excluded.category, items.category),
+      rarity = COALESCE(excluded.rarity, items.rarity)
+  `),
+
   countItems: db.prepare(`
     SELECT COUNT(*) as total FROM items 
     WHERE (@search IS NULL OR name LIKE '%' || @search || '%')
@@ -269,10 +277,39 @@ function getMarketStatistics() {
   };
 }
 
+/**
+ * Batch import data master katalog (>1.600 item)
+ */
+const importMasterCatalog = db.transaction((itemList) => {
+  let count = 0;
+  for (const item of itemList) {
+    const itemName = typeof item === 'string' ? item.trim() : (item.name || item.itemName || '').trim();
+    if (!itemName) continue;
+
+    const category = (typeof item === 'object' && item.category) ? item.category : 'Sword';
+    const rarity = (typeof item === 'object' && item.rarity) ? item.rarity : 'Common';
+    const baseRap = (typeof item === 'object' && (item.baseRap || item.rap || item.currentRap)) 
+      ? parseInt(item.baseRap || item.rap || item.currentRap, 10) 
+      : 0;
+
+    queries.importMasterStmt.run({
+      name: itemName,
+      category,
+      rarity,
+      current_rap: baseRap,
+      clean_rap: baseRap
+    });
+    count++;
+  }
+  return count;
+});
+
 module.exports = {
   processSingleItem,
   processBatchBoothFeed,
   getItemDetails,
   searchItems,
-  getMarketStatistics
+  getMarketStatistics,
+  importMasterCatalog
 };
+

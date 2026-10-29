@@ -205,14 +205,28 @@
     <!-- ========================================== -->
     <section class="tab-pane" id="tab-catalog">
       <div class="catalog-header-bar">
-        <!-- Big Search Bar -->
-        <div class="main-search-wrap">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input type="text" id="catalog-search-input" placeholder="Cari 1.600+ Pedang & Explosions A–Z..." autocomplete="off">
-          <button id="catalog-search-clear" class="btn-input-clear" style="display: none;">&times;</button>
+        <!-- Big Search Bar & Import Button -->
+        <div class="search-and-action-row">
+          <div class="main-search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="catalog-search-input" placeholder="Cari 1.600+ Pedang & Explosions A–Z..." autocomplete="off">
+            <button id="catalog-search-clear" class="btn-input-clear" style="display: none;">&times;</button>
+          </div>
+
+          <div class="import-action-wrap">
+            <input type="file" id="input-import-file" accept=".json" style="display: none;">
+            <button class="btn-import-json" id="btn-trigger-import" title="Impor file JSON daftar pedang/explosions Anda">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="import-icon">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <span>Impor JSON Master</span>
+            </button>
+          </div>
         </div>
 
         <!-- Filter Pills Group -->

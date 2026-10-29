@@ -8,8 +8,8 @@ function verifyApiKey(req, res, next) {
   const configuredKey = process.env.API_KEY;
   if (!configuredKey) return next(); // Jika tidak dikonfigurasi, lewati
 
-  // Izinkan request publik: semua GET dan kalkulator trade
-  if (req.method === 'GET' || req.path === '/trade/evaluate') {
+  // Izinkan request publik: semua GET, kalkulator trade, dan impor file master
+  if (req.method === 'GET' || req.path === '/trade/evaluate' || req.path === '/import-master') {
     return next();
   }
 
@@ -25,6 +25,37 @@ function verifyApiKey(req, res, next) {
 }
 
 router.use(verifyApiKey);
+
+/**
+ * POST /api/import-master
+ * Menerima file JSON master katalog (>1.600 pedang/explosions) dari Web Dashboard
+ */
+router.post('/import-master', (req, res) => {
+  try {
+    const payload = req.body;
+    let list = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.items) ? payload.items : []);
+    if (!Array.isArray(list) || list.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Format data tidak valid. Wajib berupa array JSON [{ name: "..." }, ...]'
+      });
+    }
+
+    const count = itemService.importMasterCatalog(list);
+
+    return res.json({
+      success: true,
+      count,
+      message: `Sukses! Berhasil mengimpor ${count} item ke database katalog master.`
+    });
+  } catch (error) {
+    console.error('[API Error /import-master]:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 /**
  * POST /api/booth-feed
