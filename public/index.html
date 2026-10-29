@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blade Ball Trade Plaza Tracker | RAP Sanitizer & Price Manipulation Detector</title>
+  <meta name="description" content="Website pemantau pasar real-time, pelacak Clean RAP, dan pendeteksi manipulasi harga (Projected, Boosted, Nuked) untuk Roblox Blade Ball Trade Plaza.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Ambient Glow Background -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">BLADE PLAZA <span class="badge-tag">TRACKER</span></h1>
+          <p class="brand-subtitle">RAP Sanitizer & Manipulation Radar</p>
+        </div>
+      </div>
+
+      <!-- Quick Ticker Stats -->
+      <div class="market-ticker" id="market-ticker">
+        <div class="ticker-pill">
+          <span class="label">Total Items:</span>
+          <span class="val" id="ticker-total">...</span>
+        </div>
+        <div class="ticker-pill pill-projected">
+          <span class="pulse-dot red"></span>
+          <span class="label">Projected:</span>
+          <span class="val" id="ticker-projected">...</span>
+        </div>
+        <div class="ticker-pill pill-nuked">
+          <span class="pulse-dot amber"></span>
+          <span class="label">Nuked:</span>
+          <span class="val" id="ticker-nuked">...</span>
+        </div>
+        <div class="server-status">
+          <span class="status-indicator online" id="status-indicator"></span>
+          <span class="status-text" id="status-text">Server Online</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="tab-calculator" id="btn-tab-calc">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon">
+          <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"></path>
+          <path d="M18 8h4a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-4"></path>
+          <circle cx="8" cy="12" r="2"></circle>
+        </svg>
+        <span>Kalkulator Trade</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-catalog" id="btn-tab-catalog">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <span>Katalog & Pencarian A-Z</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-booths" id="btn-tab-booths">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+        </svg>
+        <span>Radar Booth & Deals</span>
+      </button>
+    </nav>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+    
+    <!-- ========================================== -->
+    <!-- TAB 1: KALKULATOR TRADE DUA SISI           -->
+    <!-- ========================================== -->
+    <section class="tab-pane active" id="tab-calculator">
+      <!-- Top Alert Banner (Appears if trade contains projected items) -->
+      <div class="verdict-banner" id="verdict-banner" style="display: none;">
+        <div class="verdict-content">
+          <div class="verdict-icon" id="verdict-icon">⚠️</div>
+          <div>
+            <h2 class="verdict-title" id="verdict-title">Menunggu Evaluasi...</h2>
+            <p class="verdict-desc" id="verdict-desc">Tambahkan item pada kedua sisi untuk menganalisis keadilan trade.</p>
+          </div>
+        </div>
+        <div class="verdict-metrics">
+          <div class="metric-box">
+            <span class="m-label">Selisih Clean RAP</span>
+            <span class="m-val" id="metric-clean-diff">0</span>
+          </div>
+          <div class="metric-box">
+            <span class="m-label">Selisih Official RAP</span>
+            <span class="m-val" id="metric-off-diff">0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Warnings Container -->
+      <div id="trade-warnings-container" class="warnings-container" style="display: none;"></div>
+
+      <!-- Trade Dual Grid -->
+      <div class="trade-grid">
+        <!-- Sisi Kiri: Barang Saya -->
+        <div class="trade-card side-my">
+          <div class="trade-card-header">
+            <div class="card-title-group">
+              <span class="side-badge my">SISI ANDA</span>
+              <h3>Barang yang Anda Berikan</h3>
+            </div>
+            <button class="btn-clear" id="btn-clear-my" title="Kosongkan sisi ini">Kosongkan</button>
+          </div>
+
+          <!-- Add Item Search Autocomplete -->
+          <div class="item-search-box">
+            <div class="search-input-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="text" id="input-search-my" placeholder="Ketik nama pedang / explosion..." autocomplete="off">
+            </div>
+            <div class="autocomplete-dropdown" id="dropdown-my" style="display: none;"></div>
+          </div>
+
+          <!-- Added Items List -->
+          <div class="trade-items-list" id="list-my-items">
+            <div class="empty-state">
+              <p>Belum ada item ditambahkan</p>
+              <small>Gunakan bilah cari di atas untuk memilih pedang Anda</small>
+            </div>
+          </div>
+
+          <!-- Totals Footer -->
+          <div class="trade-card-footer">
+            <div class="total-row">
+              <span class="total-label">Clean RAP (Nilai Riil):</span>
+              <span class="total-value highlight-cyan" id="total-clean-my">0</span>
+            </div>
+            <div class="total-row sub">
+              <span class="total-label">Official RAP (Nominal):</span>
+              <span class="total-value" id="total-off-my">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sisi Kanan: Barang Lawan -->
+        <div class="trade-card side-their">
+          <div class="trade-card-header">
+            <div class="card-title-group">
+              <span class="side-badge their">SISI LAWAN</span>
+              <h3>Barang yang Lawan Tawarkan</h3>
+            </div>
+            <button class="btn-clear" id="btn-clear-their" title="Kosongkan sisi ini">Kosongkan</button>
+          </div>
+
+          <!-- Add Item Search Autocomplete -->
+          <div class="item-search-box">
+            <div class="search-input-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="text" id="input-search-their" placeholder="Ketik nama pedang / explosion lawan..." autocomplete="off">
+            </div>
+            <div class="autocomplete-dropdown" id="dropdown-their" style="display: none;"></div>
+          </div>
+
+          <!-- Added Items List -->
+          <div class="trade-items-list" id="list-their-items">
+            <div class="empty-state">
+              <p>Belum ada item ditambahkan</p>
+              <small>Cari item tawaran lawan untuk mengecek status projected</small>
+            </div>
+          </div>
+
+          <!-- Totals Footer -->
+          <div class="trade-card-footer">
+            <div class="total-row">
+              <span class="total-label">Clean RAP (Nilai Riil):</span>
+              <span class="total-value highlight-cyan" id="total-clean-their">0</span>
+            </div>
+            <div class="total-row sub">
+              <span class="total-label">Official RAP (Nominal):</span>
+              <span class="total-value" id="total-off-their">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 2: KATALOG & BILAH PENCARIAN A-Z       -->
+    <!-- ========================================== -->
+    <section class="tab-pane" id="tab-catalog">
+      <div class="catalog-header-bar">
+        <!-- Big Search Bar -->
+        <div class="main-search-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="catalog-search-input" placeholder="Cari 1.600+ Pedang & Explosions A–Z..." autocomplete="off">
+          <button id="catalog-search-clear" class="btn-input-clear" style="display: none;">&times;</button>
+        </div>
+
+        <!-- Filter Pills Group -->
+        <div class="filter-controls">
+          <div class="filter-group">
+            <span class="filter-label">Kategori:</span>
+            <div class="pills-row" id="category-pills">
+              <button class="pill active" data-cat="">Semua</button>
+              <button class="pill" data-cat="Sword">Swords</button>
+              <button class="pill" data-cat="Explosion">Explosions</button>
+              <button class="pill" data-cat="Emote">Emotes</button>
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <span class="filter-label">Status Pasar:</span>
+            <div class="pills-row" id="status-pills">
+              <button class="pill active" data-status="">Semua</button>
+              <button class="pill pill-danger" data-status="PROJECTED">🚨 Projected</button>
+              <button class="pill pill-warning" data-status="NUKED">💥 Nuked</button>
+              <button class="pill pill-info" data-status="BOOSTED">⚡ Boosted</button>
+              <button class="pill pill-success" data-status="NORMAL">🟢 Normal</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Items Grid View -->
+      <div class="items-grid" id="catalog-items-grid">
+        <div class="loading-spinner">Memuat katalog pasar...</div>
+      </div>
+
+      <!-- Pagination Bar -->
+      <div class="pagination-bar" id="pagination-bar" style="display: none;">
+        <button class="btn-page" id="btn-prev-page" disabled>&larr; Sebelumnya</button>
+        <span class="page-info" id="page-info">Halaman 1 dari 1</span>
+        <button class="btn-page" id="btn-next-page">Selanjutnya &rarr;</button>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 3: RADAR BOOTH & DEALS                 -->
+    <!-- ========================================== -->
+    <section class="tab-pane" id="tab-booths">
+      <div class="radar-header">
+        <div>
+          <h2>Radar Listing Booth Trade Plaza</h2>
+          <p>Daftar penawaran yang dibaca oleh script Scraper Solara/Delta secara live.</p>
+        </div>
+        <div class="radar-actions">
+          <button class="btn-refresh" id="btn-refresh-booths">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="refresh-icon">
+              <path d="M23 4v6h-6"></path>
+              <path d="M1 20v-6h6"></path>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            <span>Segarkan</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="booth-deals-grid" id="booth-deals-grid">
+        <!-- Live feed entries injected dynamically -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Item Detail Modal -->
+  <div class="modal-overlay" id="item-modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <span class="badge" id="modal-item-category">Sword</span>
+          <h2 id="modal-item-name">Item Name</h2>
+        </div>
+        <button class="btn-close-modal" id="btn-close-modal">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-body-content">
+        <!-- Content injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

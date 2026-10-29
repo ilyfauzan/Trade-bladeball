@@ -3,18 +3,18 @@ const router = express.Router();
 const itemService = require('../services/itemService');
 const { parseNumber } = require('../services/analyzer');
 
-// Middleware Opsional: Validasi API Key
+// Middleware Opsional: Validasi API Key (hanya memproteksi penulisan feed dari scraper luar)
 function verifyApiKey(req, res, next) {
   const configuredKey = process.env.API_KEY;
   if (!configuredKey) return next(); // Jika tidak dikonfigurasi, lewati
 
-  const providedKey = req.headers['x-api-key'] || req.query.api_key;
-  if (providedKey && providedKey === configuredKey) {
+  // Izinkan request publik: semua GET dan kalkulator trade
+  if (req.method === 'GET' || req.path === '/trade/evaluate') {
     return next();
   }
 
-  // Izinkan request GET publik untuk frontend, tetapi proteksi endpoint penulisan data jika mau
-  if (req.method === 'GET') {
+  const providedKey = req.headers['x-api-key'] || req.query.api_key;
+  if (providedKey && providedKey === configuredKey) {
     return next();
   }
 

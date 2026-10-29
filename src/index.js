@@ -8,11 +8,16 @@ const apiRoutes = require('./routes/api');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+const path = require('path');
+
 // Middleware
 app.use(cors());
 // Mendukung payload besar dari scraper Lua (hingga 10MB)
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Serve static frontend dashboard
+app.use(express.static(path.join(__dirname, '../public')));
 
 // Request logger sederhana untuk monitoring feed masuk
 app.use((req, res, next) => {
@@ -26,8 +31,8 @@ app.use((req, res, next) => {
 // Routing API
 app.use('/api', apiRoutes);
 
-// Health check & Server Status
-app.get('/', (req, res) => {
+// Health check & Server Status API
+app.get('/api/health', (req, res) => {
   res.json({
     project: 'Blade Ball Market & RAP Tracker API',
     status: 'ONLINE',
@@ -42,6 +47,14 @@ app.get('/', (req, res) => {
     },
     systemTime: new Date().toISOString()
   });
+});
+
+// Fallback: Akses non-API menyajikan Dashboard Web
+app.use((req, res, next) => {
+  if (req.method === 'GET' && !req.path.startsWith('/api')) {
+    return res.sendFile(path.join(__dirname, '../public/index.html'));
+  }
+  next();
 });
 
 // 404 Handler
