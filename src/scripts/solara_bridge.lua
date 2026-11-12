@@ -63,17 +63,26 @@ local RAP_DATABASE = {
     ["void scythe"] = 44800
 }
 
--- Auto-sync database RAP terbaru dari GitHub (Real-time Cloud Update)
+-- Auto-sync database RAP terbaru dari GitHub (Real-time Cloud Update dari bbvalues.uk)
 task.spawn(function()
     pcall(function()
         local rawJson = game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/data/rap_database.json")
         if rawJson and #rawJson > 10 then
             local parsed = HttpService:JSONDecode(rawJson)
             if type(parsed) == "table" then
+                local count = 0
                 for k, v in pairs(parsed) do
                     local cleanKey = tostring(k):lower():gsub("%s+", "")
                     RAP_DATABASE[cleanKey] = tonumber(v) or 0
+                    count = count + 1
                 end
+                pcall(function()
+                    StarterGui:SetCore("SendNotification", {
+                        Title = "📊 BBValues.uk Aktif",
+                        Text = string.format("Memuat %d item resmi!", count),
+                        Duration = 4
+                    })
+                end)
             end
         end
     end)

@@ -7,6 +7,7 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "seed": "node src/scripts/seed_master.js",
+    "sync-values": "node src/services/bbvaluesSync.js",
     "test:feed": "node test_payload.js"
   },
   "keywords": ["blade-ball", "roblox", "rap-tracker", "market-manipulation"],
