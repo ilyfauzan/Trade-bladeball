@@ -450,11 +450,21 @@ function PlazaEngine.DetectCategory(frame, itemName)
             end
 
             -- [SWORD DETECTION via ViewportFrame]:
+            -- Jika ada nama pedang atau jika terdapat MeshPart/Model tanpa Humanoid dan tanpa partikel,
+            -- maka ini 100% adalah SWORD!
             for _, obj in ipairs(vp:GetDescendants()) do
                 local on = obj.Name:lower()
                 if on:find("sword") or on:find("katana") or on:find("blade") or on:find("scythe") or on:find("handle") or on:find("weapon") then
                     return "Sword"
                 end
+            end
+
+            local hasMesh = vp:FindFirstChildWhichIsA("MeshPart", true)
+                or vp:FindFirstChildWhichIsA("SpecialMesh", true)
+                or vp:FindFirstChildWhichIsA("Part", true)
+                or vp:FindFirstChildWhichIsA("Model", true)
+            if hasMesh then
+                return "Sword"
             end
         end
 
@@ -520,15 +530,12 @@ function PlazaEngine.DetectCategory(frame, itemName)
     end)
 
     -- 5. CEK APAKAH NAMA INI DIKETAHUI MEMILIKI VARIAN EXPLOSION / EMOTE
-    -- Jika di database item ini memiliki multi-kategori (ada Emote atau Explosion):
-    -- JANGAN langsung asumsikan Sword meskipun ada kata 'katana' atau 'blade'!
-    -- Tandai sebagai "Unknown" agar dianalisis secara aman oleh GetRapValue via perbandingan harga.
     local entry = RAP_DATABASE[lowerName] or RAP_DATABASE[cleanName]
     if type(entry) == "table" and (entry.Explosion or entry.Emote) then
         return "Unknown"
     end
 
-    -- 6. KEYWORD SENJATA UNTUK ITEM TUNGGAL (Aman karena sudah dipastikan bukan multi-kategori)
+    -- 6. KEYWORD SENJATA UNTUK ITEM TUNGGAL
     if lowerName:find("blade") or lowerName:find("sword") or lowerName:find("katana") or lowerName:find("scythe") or lowerName:find("spear") or lowerName:find("dagger") or lowerName:find("axe") or lowerName:find("rapier") or lowerName:find("hammer") or lowerName:find("bat") or lowerName:find("staff") or lowerName:find("greatblade") or lowerName:find("thorn") or lowerName:find("wrath") or lowerName:find("tanto") or lowerName:find("bow") or lowerName:find("slicer") or lowerName:find("fang") or lowerName:find("cutter") or lowerName:find("cleaver") then
         return "Sword"
     end
@@ -549,66 +556,73 @@ function PlazaEngine.GetRapValue(itemName, category, price)
 
     -- JIKA ITEM MEMILIKI MULTI-KATEGORI (Tabel { Sword = ..., Explosion = ..., Emote = ... })
     if type(entry) == "table" then
-        local swordVal = tonumber(entry.Sword or entry.sword)
-        local emoteVal = tonumber(entry.Emote or entry.emote)
-        local exploVal = tonumber(entry.Explosion or entry.explosion)
+        local swordVal = tonumber(entry.Sword or entry.sword) or 0
+        local emoteVal = tonumber(entry.Emote or entry.emote) or 0
+        local exploVal = tonumber(entry.Explosion or entry.explosion) or 0
 
-        local cheapNonSwordVal = nil
-        local cheapType = "Unknown"
-        if emoteVal and exploVal then
-            if emoteVal <= exploVal then
-                cheapNonSwordVal = emoteVal
-                cheapType = "Emote"
-            else
-                cheapNonSwordVal = exploVal
-                cheapType = "Explosion"
+        -- Hitung varian termurah (minVal) dan termahal (maxVal) secara universal
+        local minVal = math.huge
+        local minType = "Unknown"
+        local maxVal = 0
+        local maxType = "Unknown"
+
+        local variants = {}
+        if swordVal > 0 then table.insert(variants, { val = swordVal, type = "Sword" }) end
+        if emoteVal > 0 then table.insert(variants, { val = emoteVal, type = "Emote" }) end
+        if exploVal > 0 then table.insert(variants, { val = exploVal, type = "Explosion" }) end
+
+        for _, v in ipairs(variants) do
+            if v.val < minVal then
+                minVal = v.val
+                minType = v.type
             end
-        elseif emoteVal then
-            cheapNonSwordVal = emoteVal
-            cheapType = "Emote"
-        elseif exploVal then
-            cheapNonSwordVal = exploVal
-            cheapType = "Explosion"
-        end
-
-        -- Kasus A: Kategori terdeteksi sebagai Explosion
-        if catLower == "explosion" then
-            if exploVal and exploVal > 0 then return exploVal, "Explosion" end
-            if cheapNonSwordVal and cheapNonSwordVal > 0 then return cheapNonSwordVal, cheapType end
-        end
-
-        -- Kasus B: Kategori terdeteksi sebagai Emote
-        if catLower == "emote" then
-            if emoteVal and emoteVal > 0 then return emoteVal, "Emote" end
-            if cheapNonSwordVal and cheapNonSwordVal > 0 then return cheapNonSwordVal, cheapType end
-        end
-
-        -- Kasus C: Kategori adalah Unknown (tidak dapat diverifikasi 100%)
-        if catLower == "unknown" then
-            -- [PROTEKSI 1]: Jika ada varian murah (Emote / Explosion), SELALU gunakan nilai murah!
-            -- Ini mencegah barang murah seharga 300 token dikira deal pedang 3.000+ token.
-            if cheapNonSwordVal and cheapNonSwordVal > 0 then
-                return cheapNonSwordVal, cheapType
+            if v.val > maxVal then
+                maxVal = v.val
+                maxType = v.type
             end
-            if swordVal and swordVal > 0 then
+        end
+
+        -- Kasus A: Kategori terdeteksi sebagai Sword
+        if catLower == "sword" and swordVal > 0 then
+            -- Jika swordVal adalah varian termurah (misal Event Horizon Sword = 7, Emote = 591),
+            -- maka pasti nilainya adalah swordVal (7)!
+            if swordVal == minVal then
                 return swordVal, "Sword"
             end
-        end
-
-        -- Kasus D: Kategori dikira "Sword"
-        -- [PROTEKSI 2: HEURISTIK KISARAN HARGA / ANTI-SCAM]:
-        -- Misal: Crimson Kagune (Sword 3280, Explo 198). Dijual di booth 300 token.
-        -- Jika harga (300) berada di kisaran varian murah (<= cheapNonSword * 2.2) dan < 35% dari sword:
-        -- MAKA INI 100% ADALAH VARIAN MURAH (Explosion/Emote), BUKAN PEDANG ASLI!
-        if swordVal and swordVal > 0 and cheapNonSwordVal and cheapNonSwordVal > 0 then
-            if price > 0 and price <= (cheapNonSwordVal * 2.2) and price < (swordVal * 0.35) then
-                return cheapNonSwordVal, cheapType
+            -- Jika swordVal mahal (seperti Crimson Kagune = 3280) tapi harga jual di booth receh (300):
+            -- Evaluasi terhadap varian termurah untuk mencegah false positive!
+            if minVal > 0 and price > 0 and price <= (minVal * 2.2) and price < (swordVal * 0.35) then
+                return minVal, minType
             end
             return swordVal, "Sword"
         end
 
-        if swordVal and swordVal > 0 then return swordVal, "Sword" end
-        if cheapNonSwordVal and cheapNonSwordVal > 0 then return cheapNonSwordVal, cheapType end
+        -- Kasus B: Kategori terdeteksi sebagai Emote
+        if catLower == "emote" and emoteVal > 0 then
+            -- Jika emoteVal adalah varian termahal (misal Event Horizon Emote = 591, Sword = 7),
+            -- tapi harga jual booth hanya 8 tokens (sangat dekat dengan Sword = 7):
+            -- MAKA INI 100% ADALAH PEDANG 7 TOKEN YANG DIJUAL 8 TOKEN, BUKAN EMOTE!
+            if emoteVal == maxVal and minVal > 0 and price > 0 and price <= (minVal * 2.2) and price < (emoteVal * 0.35) then
+                return minVal, minType
+            end
+            return emoteVal, "Emote"
+        end
+
+        -- Kasus C: Kategori terdeteksi sebagai Explosion
+        if catLower == "explosion" and exploVal > 0 then
+            if exploVal == maxVal and minVal > 0 and price > 0 and price <= (minVal * 2.2) and price < (exploVal * 0.35) then
+                return minVal, minType
+            end
+            return exploVal, "Explosion"
+        end
+
+        -- Kasus D: Kategori Unknown (Tidak dapat dipastikan)
+        -- [PRINSIP ANTI-SCAM UNIVERSAL]: Selalu gunakan NILAI TERENDAH (minVal)!
+        -- Untuk Event Horizon (Sword 7, Emote 591) -> gunakan 7!
+        -- Untuk Crimson Kagune (Sword 3280, Explo 198, Emote 140) -> gunakan 140!
+        if minVal ~= math.huge and minVal > 0 then
+            return minVal, minType
+        end
     end
 
     -- 2. Cek key eksplisit spesifik: misalnya "higanbana katana#emote"
