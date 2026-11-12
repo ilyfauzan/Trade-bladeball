@@ -200,65 +200,82 @@ function Util.SendDiscordAlert(deals)
     if not req then return end
 
     task.spawn(function()
-        pcall(function()
-            local fields = {}
-            for i = 1, math.min(#deals, 10) do
-                local d = deals[i]
+        local hopCmd = string.format('game:GetService("TeleportService"):TeleportToPlaceInstance(%s, "%s", game.Players.LocalPlayer)', tostring(PlaceId), tostring(JobId))
+
+        -- Kirim SATU PER SATU per item deal agar rapi dan mudah dibaca
+        for i, d in ipairs(deals) do
+            if i > 15 then break end -- Batasi maksimal 15 pesan per scan agar aman dari rate limit
+
+            pcall(function()
                 local cat = d.Category or "Sword"
-                local catIcon = (cat == "Sword" and "🗡️ [Sword]") 
-                    or (cat == "Emote" and "💃 [Emote]") 
-                    or (cat == "Explosion" and "💥 [Explosion]") 
+                local catIcon = (cat == "Sword" and "🗡️ [SWORD]") 
+                    or (cat == "Emote" and "💃 [EMOTE]") 
+                    or (cat == "Explosion" and "💥 [EXPLOSION]") 
                     or string.format("📦 [%s]", cat)
 
-                local fieldVal = string.format(
-                    "🏷️ **Tipe:** `%s`\n💰 **Harga:** `%s` tokens\n📊 **RAP (bbvalues):** `%s` tokens\n📈 **Profit:** `+%s` tokens (-%d%% OFF)\n👤 **Penjual:** `@%s`",
-                    cat,
-                    Util.FormatNumber(d.Price),
-                    Util.FormatNumber(d.RAP),
-                    Util.FormatNumber(d.Profit),
-                    d.Discount,
-                    d.Seller
-                )
-                table.insert(fields, {
-                    name = string.format("%s #%d: %s", catIcon, i, d.Name),
-                    value = fieldVal,
-                    inline = true
+                -- Warna embed: Gold untuk profit >= 1000, Hijau Emerald untuk profit standar
+                local embedColor = (d.Profit >= 1000) and 16098851 or 1095937
+
+                local embed = {
+                    title = string.format("%s %s", catIcon, d.Name),
+                    description = string.format("🔥 **Terdeteksi UNDER RAP di Trade Plaza!**\nDiskon: **-%d%% OFF** • Estimasi Cuan: **+%s tokens**", d.Discount, Util.FormatNumber(d.Profit)),
+                    color = embedColor,
+                    fields = {
+                        {
+                            name = "💰 Harga Jual di Booth",
+                            value = string.format("`%s` tokens", Util.FormatNumber(d.Price)),
+                            inline = true
+                        },
+                        {
+                            name = "📊 RAP Resmi (bbvalues)",
+                            value = string.format("`%s` tokens", Util.FormatNumber(d.RAP)),
+                            inline = true
+                        },
+                        {
+                            name = "📈 Estimasi Profit",
+                            value = string.format("`+%s` tokens", Util.FormatNumber(d.Profit)),
+                            inline = true
+                        },
+                        {
+                            name = "👤 Pemilik Booth",
+                            value = string.format("`@%s`", d.Seller),
+                            inline = true
+                        },
+                        {
+                            name = "🏷️ Tipe Item",
+                            value = string.format("`%s`", cat),
+                            inline = true
+                        },
+                        {
+                            name = "🌐 Teleport ke Server Ini",
+                            value = string.format("```lua\n%s\n```", hopCmd),
+                            inline = false
+                        }
+                    },
+                    footer = {
+                        text = string.format("Blade Ball Plaza Sniper • Deal #%d dari %d item • Job ID: %s", i, #deals, tostring(JobId))
+                    },
+                    timestamp = DateTime.now():ToIsoDate()
+                }
+
+                local payload = HttpService:JSONEncode({
+                    username = "Blade Ball Plaza Sniper",
+                    embeds = { embed }
                 })
-            end
 
-            -- Info Server & Teleport Script
-            local hopCmd = string.format('game:GetService("TeleportService"):TeleportToPlaceInstance(%s, "%s", game.Players.LocalPlayer)', tostring(PlaceId), tostring(JobId))
-            table.insert(fields, {
-                name = "🌐 Info Server Trade Plaza",
-                value = string.format("**Job ID:** `%s`\n**Teleport Command:**\n```lua\n%s\n```", tostring(JobId), hopCmd),
-                inline = false
-            })
+                req({
+                    Url = DISCORD_WEBHOOK_URL,
+                    Method = "POST",
+                    Headers = {
+                        ["Content-Type"] = "application/json"
+                    },
+                    Body = payload
+                })
+            end)
 
-            local embed = {
-                title = "🎯 BLADE BALL UNDER-RAP DEALS DETECTED!",
-                description = string.format("Ditemukan **%d deal** di Trade Plaza yang lolos filter!\n• Val 400-1500 (Under ≥100)\n• Val 1600+ (Under ≥200)\n*(Kategori Sword/Emote/Explo diverifikasi)*", #deals),
-                color = 1095937, -- Emerald Green
-                fields = fields,
-                footer = {
-                    text = "Blade Ball Plaza Sniper • Live bbvalues.uk Data"
-                },
-                timestamp = DateTime.now():ToIsoDate()
-            }
-
-            local payload = HttpService:JSONEncode({
-                username = "Blade Ball Plaza Sniper",
-                embeds = { embed }
-            })
-
-            req({
-                Url = DISCORD_WEBHOOK_URL,
-                Method = "POST",
-                Headers = {
-                    ["Content-Type"] = "application/json"
-                },
-                Body = payload
-            })
-        end)
+            -- Jeda 0.35 detik antar pesan agar tidak terkena Rate Limit Discord
+            task.wait(0.35)
+        end
     end)
 end
 
@@ -346,66 +363,69 @@ function PlazaEngine.IsQualifiedDeal(rap, price)
 end
 
 function PlazaEngine.DetectCategory(frame, itemName)
-    if not frame then return "Unknown" end
-
-    -- 0. Cek nama item langsung jika secara eksplisit mengandung jenisnya
+    -- 0. Cek nama item langsung
     local lowerName = tostring(itemName or ""):lower()
-    if lowerName:find("explosion") or lowerName:find("blast") or lowerName:find("detonation") then
+    if lowerName:find("explosion") or lowerName:find("blast") or lowerName:find("detonation") or lowerName:find("burst") or lowerName:find("nova") or lowerName:find("drop") then
         return "Explosion"
     end
-    if lowerName:find("emote") then
+    if lowerName:find("emote") or lowerName:find("dance") or lowerName:find("giggle") or lowerName:find("sit") or lowerName:find("pose") then
         return "Emote"
     end
-
-    -- 1. Cek Attributes pada frame atau itemBtn
-    local attrType = frame:GetAttribute("Type") or frame:GetAttribute("ItemType") or frame:GetAttribute("Category")
-    local itemBtn = frame:FindFirstChild("Frame")
-    if not attrType and itemBtn then
-        attrType = itemBtn:GetAttribute("Type") or itemBtn:GetAttribute("ItemType") or itemBtn:GetAttribute("Category")
-    end
-    if attrType then
-        local a = tostring(attrType):lower()
-        if a:find("sword") or a:find("weapon") then return "Sword"
-        elseif a:find("emote") then return "Emote"
-        elseif a:find("explo") then return "Explosion"
-        end
+    if lowerName:find("blade") or lowerName:find("sword") or lowerName:find("katana") or lowerName:find("scythe") or lowerName:find("spear") or lowerName:find("dagger") or lowerName:find("axe") or lowerName:find("rapier") or lowerName:find("hammer") or lowerName:find("bat") or lowerName:find("staff") or lowerName:find("greatblade") or lowerName:find("thorn") or lowerName:find("wrath") or lowerName:find("tanto") or lowerName:find("bow") or lowerName:find("slicer") or lowerName:find("fang") or lowerName:find("cutter") or lowerName:find("cleaver") then
+        return "Sword"
     end
 
-    -- 2. Cek ViewportFrame (Model 3D yang ditampilkan)
-    local vp = frame:FindFirstChildWhichIsA("ViewportFrame", true)
-    if vp then
-        -- EMOTE di Blade Ball selalu menggunakan Model Dummy Karakter R15/R6 yang berpose
-        if vp:FindFirstChildWhichIsA("Humanoid", true) 
-           or vp:FindFirstChild("HumanoidRootPart", true)
-           or vp:FindFirstChild("Head", true)
-           or vp:FindFirstChild("UpperTorso", true)
-           or vp:FindFirstChild("Torso", true) then
-            return "Emote"
+    if frame then
+        -- 1. Cek Attributes pada frame atau itemBtn
+        local attrType = frame:GetAttribute("Type") or frame:GetAttribute("ItemType") or frame:GetAttribute("Category")
+        local itemBtn = frame:FindFirstChild("Frame")
+        if not attrType and itemBtn then
+            attrType = itemBtn:GetAttribute("Type") or itemBtn:GetAttribute("ItemType") or itemBtn:GetAttribute("Category")
+        end
+        if attrType then
+            local a = tostring(attrType):lower()
+            if a:find("sword") or a:find("weapon") then return "Sword"
+            elseif a:find("emote") then return "Emote"
+            elseif a:find("explo") then return "Explosion"
+            end
         end
 
-        -- Cek objek di dalam ViewportFrame
-        for _, obj in ipairs(vp:GetDescendants()) do
-            local on = obj.Name:lower()
-            if on:find("sword") or on:find("katana") or on:find("blade") or on:find("scythe") or on:find("handle") or on:find("weapon") then
-                return "Sword"
-            elseif on:find("explosion") or on:find("vfx") or on:find("effect") or on:find("burst") or on:find("ball") then
-                return "Explosion"
+        -- 2. Cek ViewportFrame (Model 3D yang ditampilkan)
+        local vp = frame:FindFirstChildWhichIsA("ViewportFrame", true)
+        if vp then
+            -- EMOTE di Blade Ball selalu menggunakan Model Dummy Karakter R15/R6 yang berpose
+            if vp:FindFirstChildWhichIsA("Humanoid", true) 
+               or vp:FindFirstChild("HumanoidRootPart", true)
+               or vp:FindFirstChild("Head", true)
+               or vp:FindFirstChild("UpperTorso", true)
+               or vp:FindFirstChild("Torso", true) then
+                return "Emote"
+            end
+
+            -- Cek objek di dalam ViewportFrame
+            for _, obj in ipairs(vp:GetDescendants()) do
+                local on = obj.Name:lower()
+                if on:find("sword") or on:find("katana") or on:find("blade") or on:find("scythe") or on:find("handle") or on:find("weapon") then
+                    return "Sword"
+                elseif on:find("explosion") or on:find("vfx") or on:find("effect") or on:find("burst") or on:find("ball") then
+                    return "Explosion"
+                end
+            end
+        end
+
+        -- 3. Cek ImageLabel / Icon / Badge
+        for _, img in ipairs(frame:GetDescendants()) do
+            if img:IsA("ImageLabel") and img.Visible then
+                local iname = img.Name:lower()
+                if iname:find("sword") then return "Sword"
+                elseif iname:find("emote") then return "Emote"
+                elseif iname:find("explo") then return "Explosion"
+                end
             end
         end
     end
 
-    -- 3. Cek ImageLabel / Icon / Badge
-    for _, img in ipairs(frame:GetDescendants()) do
-        if img:IsA("ImageLabel") and img.Visible then
-            local iname = img.Name:lower()
-            if iname:find("sword") then return "Sword"
-            elseif iname:find("emote") then return "Emote"
-            elseif iname:find("explo") then return "Explosion"
-            end
-        end
-    end
-
-    return "Unknown"
+    return "Sword"
 end
 
 function PlazaEngine.GetRapValue(itemName, category)
