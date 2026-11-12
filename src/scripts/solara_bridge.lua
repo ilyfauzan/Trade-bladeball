@@ -556,72 +556,38 @@ function PlazaEngine.GetRapValue(itemName, category, price)
 
     -- JIKA ITEM MEMILIKI MULTI-KATEGORI (Tabel { Sword = ..., Explosion = ..., Emote = ... })
     if type(entry) == "table" then
-        local swordVal = tonumber(entry.Sword or entry.sword) or 0
-        local emoteVal = tonumber(entry.Emote or entry.emote) or 0
-        local exploVal = tonumber(entry.Explosion or entry.explosion) or 0
-
-        -- Hitung varian termurah (minVal) dan termahal (maxVal) secara universal
-        local minVal = math.huge
-        local minType = "Unknown"
-        local maxVal = 0
-        local maxType = "Unknown"
-
         local variants = {}
-        if swordVal > 0 then table.insert(variants, { val = swordVal, type = "Sword" }) end
-        if emoteVal > 0 then table.insert(variants, { val = emoteVal, type = "Emote" }) end
-        if exploVal > 0 then table.insert(variants, { val = exploVal, type = "Explosion" }) end
-
-        for _, v in ipairs(variants) do
-            if v.val < minVal then
-                minVal = v.val
-                minType = v.type
-            end
-            if v.val > maxVal then
-                maxVal = v.val
-                maxType = v.type
+        for cName, cVal in pairs(entry) do
+            local num = tonumber(cVal) or 0
+            if num > 0 then
+                table.insert(variants, { type = tostring(cName), val = num })
             end
         end
 
-        -- Kasus A: Kategori terdeteksi sebagai Sword
-        if catLower == "sword" and swordVal > 0 then
-            -- Jika swordVal adalah varian termurah (misal Event Horizon Sword = 7, Emote = 591),
-            -- maka pasti nilainya adalah swordVal (7)!
-            if swordVal == minVal then
-                return swordVal, "Sword"
-            end
-            -- Jika swordVal mahal (seperti Crimson Kagune = 3280) tapi harga jual di booth receh (300):
-            -- Evaluasi terhadap varian termurah untuk mencegah false positive!
-            if minVal > 0 and price > 0 and price <= (minVal * 2.2) and price < (swordVal * 0.35) then
-                return minVal, minType
-            end
-            return swordVal, "Sword"
-        end
+        if #variants > 0 then
+            -- Urutkan dari nilai terendah ke nilai tertinggi
+            table.sort(variants, function(a, b) return a.val < b.val end)
 
-        -- Kasus B: Kategori terdeteksi sebagai Emote
-        if catLower == "emote" and emoteVal > 0 then
-            -- Jika emoteVal adalah varian termahal (misal Event Horizon Emote = 591, Sword = 7),
-            -- tapi harga jual booth hanya 8 tokens (sangat dekat dengan Sword = 7):
-            -- MAKA INI 100% ADALAH PEDANG 7 TOKEN YANG DIJUAL 8 TOKEN, BUKAN EMOTE!
-            if emoteVal == maxVal and minVal > 0 and price > 0 and price <= (minVal * 2.2) and price < (emoteVal * 0.35) then
-                return minVal, minType
-            end
-            return emoteVal, "Emote"
-        end
+            -- [LOGIKA KISARAN HARGA CERDAS / NEAREST VALUE BRACKET]:
+            -- Default awal: Selalu pilih varian termurah agar 100% aman dari penipuan/salah jenis
+            local chosen = variants[1]
 
-        -- Kasus C: Kategori terdeteksi sebagai Explosion
-        if catLower == "explosion" and exploVal > 0 then
-            if exploVal == maxVal and minVal > 0 and price > 0 and price <= (minVal * 2.2) and price < (exploVal * 0.35) then
-                return minVal, minType
+            -- Cek dari varian termahal ke termurah:
+            -- Jika harga di booth >= 40% dari nilai varian tersebut, maka barang tersebut memang
+            -- varian itu (karena diskon wajar berada di kisaran 10% - 60% OFF).
+            -- Jika harga booth jauh di bawah 40% (misal harga 8 untuk varian 591, atau harga 300 untuk 3280),
+            -- maka ITU 100% ADALAH VARIAN MURAHNYA (Pedang 7 token / Explo 198 token)!
+            if price > 0 then
+                for i = #variants, 1, -1 do
+                    local v = variants[i]
+                    if price >= (v.val * 0.4) then
+                        chosen = v
+                        break
+                    end
+                end
             end
-            return exploVal, "Explosion"
-        end
 
-        -- Kasus D: Kategori Unknown (Tidak dapat dipastikan)
-        -- [PRINSIP ANTI-SCAM UNIVERSAL]: Selalu gunakan NILAI TERENDAH (minVal)!
-        -- Untuk Event Horizon (Sword 7, Emote 591) -> gunakan 7!
-        -- Untuk Crimson Kagune (Sword 3280, Explo 198, Emote 140) -> gunakan 140!
-        if minVal ~= math.huge and minVal > 0 then
-            return minVal, minType
+            return chosen.val, chosen.type
         end
     end
 
