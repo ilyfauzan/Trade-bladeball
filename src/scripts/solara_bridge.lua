@@ -26,15 +26,16 @@ local JobId = game.JobId
 
 -- [2] DATABASE NILAI RAP BASELINE (PEDANG & EXPLOSION POPULER)
 local RAP_DATABASE = {
+    ["wavelight"] = 360,
+    ["wavelight greatblade"] = 360,
     ["prince blade"] = 3018,
-    ["wavelight greatblade"] = 3018,
     ["dark blade"] = 1000,
     ["base sword"] = 50,
-    ["dragon blade"] = 15000,
+    ["dragon blade"] = 12500,
     ["cyber scythe"] = 8500,
     ["supernova"] = 14000,
     ["sakura bloom"] = 2100,
-    ["singularity katana"] = 45000,
+    ["singularity katana"] = 18000,
     ["aetherial azure katana"] = 12000,
     ["abyssal blade"] = 2500,
     ["astral seraph blade"] = 3600,
@@ -50,8 +51,33 @@ local RAP_DATABASE = {
     ["massive lollipop"] = 2200,
     ["rapier"] = 3200,
     ["bonsai tree"] = 4500,
-    ["blocky sword"] = 5000
+    ["blocky sword"] = 5000,
+    ["infinity katana"] = 45000,
+    ["glitch katana"] = 3200,
+    ["aetheria"] = 62000,
+    ["dual katana"] = 150,
+    ["shadow scythe"] = 9800,
+    ["black hole"] = 55000,
+    ["giggle emote"] = 400,
+    ["inferno blade"] = 21800,
+    ["void scythe"] = 44800
 }
+
+-- Auto-sync database RAP terbaru dari GitHub (Real-time Cloud Update)
+task.spawn(function()
+    pcall(function()
+        local rawJson = game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/data/rap_database.json")
+        if rawJson and #rawJson > 10 then
+            local parsed = HttpService:JSONDecode(rawJson)
+            if type(parsed) == "table" then
+                for k, v in pairs(parsed) do
+                    local cleanKey = tostring(k):lower():gsub("%s+", "")
+                    RAP_DATABASE[cleanKey] = tonumber(v) or 0
+                end
+            end
+        end
+    end)
+end)
 
 -- [3] MODULE: UTILITIES
 local Util = {}
@@ -164,14 +190,23 @@ local PlazaEngine = {
 }
 
 function PlazaEngine.GetRapValue(itemName)
+    if not itemName or #itemName == 0 then return 0 end
     local clean = itemName:lower():gsub("%s+", "")
-    if RAP_DATABASE[clean] then return RAP_DATABASE[clean] end
+    
+    -- 1. Exact direct match (Prioritas Utama)
+    if RAP_DATABASE[clean] then 
+        return RAP_DATABASE[clean] 
+    end
+    
+    -- 2. Exact match against database keys (mencegah salah deteksi substring)
     for k, v in pairs(RAP_DATABASE) do
-        if clean:find(k, 1, true) or k:find(clean, 1, true) then
+        local cleanKey = tostring(k):lower():gsub("%s+", "")
+        if clean == cleanKey then
             return v
         end
     end
-    return 0
+    
+    return 0 -- Kembalikan 0 jika tidak ada di database (agar tidak terjadi false deal)
 end
 
 function PlazaEngine.ScanAllBooths(statusCallback)
