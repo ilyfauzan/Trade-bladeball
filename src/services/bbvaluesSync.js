@@ -38,19 +38,23 @@ async function fetchBbValues() {
 async function sync() {
   console.log('[BBValues Sync] Mengambil data terbaru dari bbvalues.uk/values/...');
   let items;
-  
-  // Cek apakah ada file scratch lokal terlebih dahulu atau fetch online
-  const localScratch = path.join(__dirname, '..', '..', 'scratch_bbv_items.json');
-  if (fs.existsSync(localScratch)) {
-    try {
-      items = JSON.parse(fs.readFileSync(localScratch, 'utf8'));
-      console.log(`[BBValues Sync] Membaca dari cache lokal: ${items.length} item.`);
-    } catch (_) {}
+
+  try {
+    items = await fetchBbValues();
+    console.log(`[BBValues Sync] Berhasil download online: ${items.length} item.`);
+  } catch (netErr) {
+    console.warn('[BBValues Sync] Gagal download online:', netErr.message);
+    const localScratch = path.join(__dirname, '..', '..', 'scratch_bbv_items.json');
+    if (fs.existsSync(localScratch)) {
+      try {
+        items = JSON.parse(fs.readFileSync(localScratch, 'utf8'));
+        console.log(`[BBValues Sync] Membaca dari cache lokal: ${items.length} item.`);
+      } catch (_) {}
+    }
   }
 
   if (!items || !Array.isArray(items)) {
-    items = await fetchBbValues();
-    console.log(`[BBValues Sync] Berhasil download online: ${items.length} item.`);
+    throw new Error('Tidak ada data item yang dapat diproses!');
   }
 
   const rapDatabase = {};
@@ -126,3 +130,4 @@ if (require.main === module) {
 }
 
 module.exports = { sync, fetchBbValues };
+

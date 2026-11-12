@@ -63,31 +63,6 @@ local RAP_DATABASE = {
     ["void scythe"] = 44800
 }
 
--- Auto-sync database RAP terbaru dari GitHub (Real-time Cloud Update dari bbvalues.uk)
-task.spawn(function()
-    pcall(function()
-        local rawJson = game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/data/rap_database.json")
-        if rawJson and #rawJson > 10 then
-            local parsed = HttpService:JSONDecode(rawJson)
-            if type(parsed) == "table" then
-                local count = 0
-                for k, v in pairs(parsed) do
-                    local cleanKey = tostring(k):lower():gsub("%s+", "")
-                    RAP_DATABASE[cleanKey] = tonumber(v) or 0
-                    count = count + 1
-                end
-                pcall(function()
-                    StarterGui:SetCore("SendNotification", {
-                        Title = "📊 BBValues.uk Aktif",
-                        Text = string.format("Memuat %d item resmi!", count),
-                        Duration = 4
-                    })
-                end)
-            end
-        end
-    end)
-end)
-
 -- [3] MODULE: UTILITIES
 local Util = {}
 
@@ -118,7 +93,7 @@ function Util.Notify(title, message, isSpecial)
         StarterGui:SetCore("SendNotification", {
             Title = title,
             Text = message,
-            Duration = isSpecial and 6 or 3
+            Duration = isSpecial and 6 or 4
         })
     end)
 end
@@ -140,6 +115,65 @@ function Util.UnfreezePlayer()
         PlayerModule:GetControls():Enable()
     end)
 end
+
+function Util.SyncBbValues()
+    local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
+    local loadedLive = false
+
+    -- [Metode 1]: Tarik LIVE langsung dari API bbvalues.uk via executor
+    if req then
+        pcall(function()
+            local res = req({
+                Url = "https://bbvalues.uk/api/items",
+                Method = "GET",
+                Headers = {
+                    ["x-bbv-handshake"] = "v1-secure-request",
+                    ["Accept"] = "application/json",
+                    ["Referer"] = "https://bbvalues.uk/values/",
+                    ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                }
+            })
+            if res and (res.StatusCode == 200 or res.Status == 200) and res.Body then
+                local items = HttpService:JSONDecode(res.Body)
+                if type(items) == "table" and #items > 500 then
+                    local count = 0
+                    for _, it in ipairs(items) do
+                        local val = (it.p and tonumber(it.p) > 0) and tonumber(it.p) or (tonumber(it.a) or 0)
+                        if it.n and val > 0 then
+                            local cleanKey = tostring(it.n):lower():gsub("%s+", "")
+                            RAP_DATABASE[cleanKey] = val
+                            count = count + 1
+                        end
+                    end
+                    loadedLive = true
+                    Util.Notify("⚡ LIVE bbvalues.uk", string.format("Langsung sinkron %s item real-time!", Util.FormatNumber(count)))
+                end
+            end
+        end)
+    end
+
+    -- [Metode 2]: Fallback Cloud Database GitHub jika direct request diblokir
+    if not loadedLive then
+        pcall(function()
+            local rawJson = game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/data/rap_database.json")
+            if rawJson and #rawJson > 10 then
+                local parsed = HttpService:JSONDecode(rawJson)
+                if type(parsed) == "table" then
+                    local count = 0
+                    for k, v in pairs(parsed) do
+                        local cleanKey = tostring(k):lower():gsub("%s+", "")
+                        RAP_DATABASE[cleanKey] = tonumber(v) or 0
+                        count = count + 1
+                    end
+                    Util.Notify("📊 Cloud Database", string.format("Memuat %s item pasar resmi!", Util.FormatNumber(count)))
+                end
+            end
+        end)
+    end
+end
+
+-- Jalankan sinkronisasi nilai otomatis saat script aktif
+task.spawn(Util.SyncBbValues)
 
 -- [4] MODULE: TELEPORT & SERVER HOPPING
 local Navigator = {}

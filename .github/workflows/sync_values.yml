@@ -1,0 +1,38 @@
+name: Auto-Sync BBValues Cloud Database
+
+on:
+  schedule:
+    # Berjalan otomatis setiap 6 jam
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Memungkinkan tombol 'Run workflow' manual di GitHub Actions
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch Latest BBValues
+        run: node src/services/bbvaluesSync.js
+
+      - name: Commit and Push if Changed
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/data/rap_database.json
+          if git diff --staged --quiet; then
+            echo "Tidak ada perubahan harga di bbvalues.uk."
+          else
+            git commit -m "chore(db): auto-sync latest prices from bbvalues.uk [skip ci]"
+            git push origin main
+          fi
