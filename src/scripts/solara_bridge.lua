@@ -253,69 +253,56 @@ function Util.SendDiscordAlert(deals)
     if not req then return end
 
     task.spawn(function()
-        local hopCmd = string.format('game:GetService("TeleportService"):TeleportToPlaceInstance(%s, "%s", game.Players.LocalPlayer)', tostring(PlaceId), tostring(JobId))
-
-        -- Kirim SATU PER SATU per item deal agar rapi dan mudah dibaca
+        -- Kirim SATU PER SATU per item deal dengan format ringkas & simpel
         for i, d in ipairs(deals) do
-            if i > 15 then break end -- Batasi maksimal 15 pesan per scan agar aman dari rate limit
+            if i > 15 then break end
 
             pcall(function()
                 local cat = d.Category or "Sword"
-                local catIcon = (cat == "Sword" and "🗡️ [SWORD]") 
-                    or (cat == "Emote" and "💃 [EMOTE]") 
-                    or (cat == "Explosion" and "💥 [EXPLOSION]") 
-                    or string.format("📦 [%s]", cat)
+                local catIcon = (cat == "Sword" and "🗡️") 
+                    or (cat == "Emote" and "💃") 
+                    or (cat == "Explosion" and "💥") 
+                    or "📦"
 
-                -- Warna embed: Ungu Diamond untuk Special Watchlist, Gold untuk profit >= 1000, Hijau untuk normal
-                local embedColor = d.IsSpecial and 10181046 or ((d.Profit >= 1000) and 16098851 or 1095937)
-                local embedTitle = d.IsSpecial and string.format("💎 [SPECIAL HIGH-DEMAND DEAL] %s", d.Name) or string.format("%s %s", catIcon, d.Name)
-                local embedDesc = d.IsSpecial and string.format("✨ **%s**\nItem ini sangat likuid/hype dan worth it dibeli meski di atas RAP resmi!\nTarget Resell: **%s tokens**", d.SpecialReason or "Hype Item", Util.FormatNumber(d.EffectiveRAP or d.RAP))
-                    or string.format("🔥 **Terdeteksi UNDER RAP di Trade Plaza!**\nDiskon: **-%d%% OFF** • Estimasi Cuan: **+%s tokens**", d.Discount, Util.FormatNumber(d.Profit))
+                local embedColor = d.IsSpecial and 10181046 or ((d.Profit >= 1000) and 16098851 or 5763719)
 
                 local embed = {
-                    title = embedTitle,
-                    description = embedDesc,
+                    title = string.format("%s %s", catIcon, d.Name),
                     color = embedColor,
                     fields = {
                         {
-                            name = "💰 Harga Jual di Booth",
-                            value = string.format("`%s` tokens", Util.FormatNumber(d.Price)),
+                            name = "💰 Harga Booth",
+                            value = string.format("**%s** tokens", Util.FormatNumber(d.Price)),
                             inline = true
                         },
                         {
-                            name = "📊 RAP Resmi (bbvalues)",
-                            value = string.format("`%s` tokens", Util.FormatNumber(d.RAP)),
+                            name = "📊 Value (RAP)",
+                            value = string.format("**%s** tokens", Util.FormatNumber(d.RAP)),
                             inline = true
                         },
                         {
-                            name = "📈 Estimasi Profit",
-                            value = string.format("`+%s` tokens", Util.FormatNumber(d.Profit)),
+                            name = "📈 Estimasi Untung",
+                            value = string.format("**+%s** tokens", Util.FormatNumber(d.Profit)),
                             inline = true
                         },
                         {
-                            name = "👤 Pemilik Booth",
-                            value = string.format("`@%s`", d.Seller),
+                            name = "👤 Pemilik",
+                            value = string.format("@%s", d.Seller),
                             inline = true
                         },
                         {
-                            name = "🏷️ Tipe Item",
-                            value = string.format("`%s`", cat),
+                            name = "🏷️ Tipe",
+                            value = string.format("%s", cat),
                             inline = true
-                        },
-                        {
-                            name = "🌐 Teleport ke Server Ini",
-                            value = string.format("```lua\n%s\n```", hopCmd),
-                            inline = false
                         }
                     },
                     footer = {
-                        text = string.format("Blade Ball Plaza Sniper • Deal #%d dari %d item • Job ID: %s", i, #deals, tostring(JobId))
-                    },
-                    timestamp = DateTime.now():ToIsoDate()
+                        text = string.format("Job ID: %s", tostring(JobId))
+                    }
                 }
 
                 local payload = HttpService:JSONEncode({
-                    username = "Blade Ball Plaza Sniper",
+                    username = "Blade Ball Sniper",
                     embeds = { embed }
                 })
 
@@ -329,7 +316,6 @@ function Util.SendDiscordAlert(deals)
                 })
             end)
 
-            -- Jeda 0.35 detik antar pesan agar tidak terkena Rate Limit Discord
             task.wait(0.35)
         end
     end)
