@@ -24,6 +24,9 @@ local LocalPlayer = Players.LocalPlayer
 local PlaceId = game.PlaceId
 local JobId = game.JobId
 
+-- Discord Webhook untuk notifikasi hasil scan Under-RAP
+local DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1570338415722102866/0Hpi4LO0C-ZLvovBhsGG96Tb-td2nlrLQZGXor1J8pffFKJXzPqkVxxD91aC5eE0pf3d"
+
 -- [2] DATABASE NILAI RAP BASELINE (PEDANG & EXPLOSION POPULER)
 local RAP_DATABASE = {
     ["wavelight"] = 360,
@@ -170,6 +173,68 @@ function Util.SyncBbValues()
             end
         end)
     end
+end
+
+function Util.SendDiscordAlert(deals)
+    if not deals or #deals == 0 or not DISCORD_WEBHOOK_URL or #DISCORD_WEBHOOK_URL == 0 then return end
+    
+    local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
+    if not req then return end
+
+    task.spawn(function()
+        pcall(function()
+            local fields = {}
+            for i = 1, math.min(#deals, 10) do
+                local d = deals[i]
+                local fieldVal = string.format(
+                    "💰 **Harga:** `%s` tokens\n📊 **RAP (bbvalues):** `%s` tokens\n📈 **Profit:** `+%s` tokens (-%d%% OFF)\n👤 **Penjual:** `@%s`",
+                    Util.FormatNumber(d.Price),
+                    Util.FormatNumber(d.RAP),
+                    Util.FormatNumber(d.Profit),
+                    d.Discount,
+                    d.Seller
+                )
+                table.insert(fields, {
+                    name = string.format("🗡️ #%d: %s", i, d.Name),
+                    value = fieldVal,
+                    inline = true
+                })
+            end
+
+            -- Info Server & Teleport Script
+            local hopCmd = string.format('game:GetService("TeleportService"):TeleportToPlaceInstance(%s, "%s", game.Players.LocalPlayer)', tostring(PlaceId), tostring(JobId))
+            table.insert(fields, {
+                name = "🌐 Info Server Trade Plaza",
+                value = string.format("**Job ID:** `%s`\n**Teleport Command:**\n```lua\n%s\n```", tostring(JobId), hopCmd),
+                inline = false
+            })
+
+            local embed = {
+                title = "🎯 BLADE BALL UNDER-RAP DEALS DETECTED!",
+                description = string.format("Ditemukan **%d deal** di Trade Plaza yang lolos filter!\n• Val 400-1500 (Under ≥100)\n• Val 1600+ (Under ≥200)", #deals),
+                color = 1095937, -- Emerald Green
+                fields = fields,
+                footer = {
+                    text = "Blade Ball Plaza Sniper • Live bbvalues.uk Data"
+                },
+                timestamp = DateTime.now():ToIsoDate()
+            }
+
+            local payload = HttpService:JSONEncode({
+                username = "Blade Ball Plaza Sniper",
+                embeds = { embed }
+            })
+
+            req({
+                Url = DISCORD_WEBHOOK_URL,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = payload
+            })
+        end)
+    end)
 end
 
 -- Jalankan sinkronisasi nilai otomatis saat script aktif
@@ -424,6 +489,7 @@ function PlazaEngine.ScanAllBooths(statusCallback)
             string.format("%s dijual %s (RAP %s, Untung +%s!)", best.Name, Util.FormatNumber(best.Price), Util.FormatNumber(best.RAP), Util.FormatNumber(best.Profit)),
             true
         )
+        Util.SendDiscordAlert(deals)
     else
         Util.Notify("Scan Selesai", string.format("Memeriksa %d item. Tidak ada under RAP di server ini.", #foundListings))
         if PlazaEngine.AutoHopWhenEmpty and #activeStands >= 6 then
