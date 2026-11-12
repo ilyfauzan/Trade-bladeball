@@ -36,3 +36,4 @@ jobs:
             git commit -m "chore(db): auto-sync latest prices from bbvalues.uk [skip ci]"
             git push origin main
           fi
+

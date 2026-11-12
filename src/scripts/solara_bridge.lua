@@ -228,9 +228,32 @@ local PlazaEngine = {
     IsScanning = false,
     AllListings = {},
     UnderRapDeals = {},
-    MinDiscountPercent = 10,
     AutoHopWhenEmpty = false
 }
+
+function PlazaEngine.IsQualifiedDeal(rap, price)
+    if not rap or rap <= 0 or not price or price <= 0 then return false end
+    local profit = rap - price
+    if profit <= 0 then return false end
+
+    -- [Kriteria 1]: Item Value 400 - 1500 -> Tampilkan jika under 100 keatas (profit >= 100)
+    if rap >= 400 and rap <= 1500 then
+        return profit >= 100
+    end
+
+    -- [Kriteria 2]: Item Value 1600 - 5000 -> Tampilkan jika under 200 keatas (profit >= 200)
+    if rap > 1500 and rap <= 5000 then
+        return profit >= 200
+    end
+
+    -- [Kriteria 3]: Item Value > 5000 (High-Tier) -> Tampilkan jika under 200 keatas
+    if rap > 5000 then
+        return profit >= 200
+    end
+
+    -- Item value < 400 diabaikan agar radar bebas dari spam item receh
+    return false
+end
 
 function PlazaEngine.GetRapValue(itemName)
     if not itemName or #itemName == 0 then return 0 end
@@ -352,7 +375,7 @@ function PlazaEngine.ScanAllBooths(statusCallback)
                                 local rap = PlazaEngine.GetRapValue(itemName)
                                 local profit = (rap > 0) and (rap - price) or 0
                                 local discountPct = (rap > 0) and math.floor(((rap - price) / rap) * 100) or 0
-                                local isUnder = (rap > 0 and price < rap)
+                                local isQualified = PlazaEngine.IsQualifiedDeal(rap, price)
 
                                 local listing = {
                                     Name = itemName,
@@ -360,14 +383,14 @@ function PlazaEngine.ScanAllBooths(statusCallback)
                                     RAP = rap,
                                     Profit = profit,
                                     Discount = discountPct,
-                                    IsUnderRap = isUnder,
+                                    IsUnderRap = isQualified,
                                     Seller = sellerName,
                                     Stand = stand
                                 }
 
                                 table.insert(foundListings, listing)
 
-                                if isUnder and discountPct >= PlazaEngine.MinDiscountPercent then
+                                if isQualified then
                                     table.insert(deals, listing)
                                 end
                             end
@@ -491,10 +514,10 @@ function UI.Build()
     sub.Size = UDim2.new(1, -60, 0, 16)
     sub.Position = UDim2.new(0, 14, 0, 24)
     sub.BackgroundTransparency = 1
-    sub.Text = "Under RAP Deal Radar & Auto-Hop"
-    sub.TextColor3 = Color3.fromRGB(148, 163, 184)
-    sub.Font = Enum.Font.Gotham
-    sub.TextSize = 9
+    sub.Text = "🎯 Val 400-1500 (Under ≥100) | 1600+ (Under ≥200)"
+    sub.TextColor3 = Color3.fromRGB(52, 211, 153)
+    sub.Font = Enum.Font.GothamBold
+    sub.TextSize = 8.5
     sub.TextXAlignment = Enum.TextXAlignment.Left
     sub.Parent = header
 
@@ -594,9 +617,9 @@ function UI.Build()
             empty.Size = UDim2.new(1, 0, 0, 140)
             empty.BackgroundTransparency = 1
             empty.TextColor3 = Color3.fromRGB(148, 163, 184)
-            empty.Text = "Belum ada deal Under RAP terdeteksi.\n\nTekan '⚡ SCAN SEMUA BOOTH' di bawah\nuntuk memindai 32 stand Trade Plaza!"
+            empty.Text = "Belum ada deal sesuai kriteria filter:\n• Value 400 - 1500 (Under ≥ 100)\n• Value 1600 - 5000 (Under ≥ 200)\n• Value > 5000 (Under ≥ 200)\n\nTekan '⚡ SCAN SEMUA BOOTH' di bawah!"
             empty.Font = Enum.Font.Gotham
-            empty.TextSize = 10
+            empty.TextSize = 9.5
             empty.Parent = paneDeals
             return
         end
