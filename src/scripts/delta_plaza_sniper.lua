@@ -270,19 +270,26 @@ function Util.SendDiscordAlert(deals)
                     or (cat == "Explosion" and "💥") 
                     or "📦"
 
+                local isUnder = (d.Profit > 0)
                 local isOver = (d.Profit < 0)
                 local isEven = (d.Profit == 0)
-                local estUntung = (d.Profit > 0) and string.format("**+%s** tokens", Util.FormatNumber(d.Profit))
+
+                -- Tanda pembeda simpel: [UNDER] untuk deal cuan, [10k-20k] untuk item pantauan non-under
+                local badge = isUnder and "🔥 [UNDER]" or "💎 [10k-20k]"
+                if d.IsSpecial and not isUnder and d.SpecialReason and d.SpecialReason:find("Rose") then
+                    badge = "🌹 [SPECIAL]"
+                end
+
+                local estUntung = isUnder and string.format("**+%s** tokens", Util.FormatNumber(d.Profit))
                     or isEven and "**Pas RAP** (0 tokens)"
                     or string.format("**-%s** tokens", Util.FormatNumber(math.abs(d.Profit)))
 
-                local embedColor = isOver and 16763904
-                    or isEven and 3901686
-                    or d.IsSpecial and 10181046 
-                    or ((d.Profit >= 1000) and 16098851 or 5763719)
+                -- Warna embed: Hijau/Emas untuk UNDER (fokus utama), Biru untuk pantauan 10k-20k non-under
+                local embedColor = isUnder and ((d.Profit >= 1000) and 16098851 or 5763719)
+                    or 3901686
 
                 local embed = {
-                    title = string.format("%s %s", catIcon, d.Name),
+                    title = string.format("%s %s %s", badge, catIcon, d.Name),
                     color = embedColor,
                     fields = {
                         {
