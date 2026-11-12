@@ -57,8 +57,7 @@ async function sync() {
     throw new Error('Tidak ada data item yang dapat diproses!');
   }
 
-  const rapDatabase = {};
-  let validCount = 0;
+  const catMap = {};
 
   for (const item of items) {
     const name = item.n;
@@ -70,13 +69,33 @@ async function sync() {
 
     // Simpan dengan key normalized
     const cleanKey = name.toLowerCase().replace(/\s+/g, ' ').trim();
-    rapDatabase[cleanKey] = value;
-    validCount++;
+    const category = (item.c || 'Sword').trim();
+
+    if (!catMap[cleanKey]) catMap[cleanKey] = {};
+    catMap[cleanKey][category] = value;
+  }
+
+  const rapDatabase = {};
+  let validCount = 0;
+
+  for (const [name, cats] of Object.entries(catMap)) {
+    const catList = Object.keys(cats);
+    if (catList.length === 1) {
+      rapDatabase[name] = cats[catList[0]];
+    } else {
+      rapDatabase[name] = cats;
+    }
+
+    // Simpan key eksplisit kategori: "higanbana katana#sword", "higanbana katana#emote"
+    for (const [catName, val] of Object.entries(cats)) {
+      rapDatabase[`${name}#${catName.toLowerCase()}`] = val;
+      validCount++;
+    }
   }
 
   // Tulis ke rap_database.json
   fs.writeFileSync(OUTPUT_JSON, JSON.stringify(rapDatabase, null, 2), 'utf8');
-  console.log(`[BBValues Sync] Sukses menyimpan ${validCount} item ke ${OUTPUT_JSON}!`);
+  console.log(`[BBValues Sync] Sukses menyimpan ${validCount} varian item ke ${OUTPUT_JSON}!`);
 
   // Update ke database SQLite lokal jika ada
   if (fs.existsSync(DB_PATH)) {

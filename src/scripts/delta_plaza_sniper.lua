@@ -144,7 +144,21 @@ function Util.SyncBbValues()
                         local val = (it.p and tonumber(it.p) > 0) and tonumber(it.p) or (tonumber(it.a) or 0)
                         if it.n and val > 0 then
                             local cleanKey = tostring(it.n):lower():gsub("%s+", "")
-                            RAP_DATABASE[cleanKey] = val
+                            local cat = tostring(it.c or "Sword"):lower()
+                            
+                            -- Simpan key spesifik kategori (misal: "higanbanakatana#sword", "higanbanakatana#emote")
+                            RAP_DATABASE[cleanKey .. "#" .. cat] = val
+                            
+                            -- Simpan juga pada generic key
+                            if not RAP_DATABASE[cleanKey] then
+                                RAP_DATABASE[cleanKey] = val
+                            elseif type(RAP_DATABASE[cleanKey]) == "number" then
+                                -- Jika ambigu (ada 2 item dengan nama sama beda kategori):
+                                -- AMBIL NILAI PALING RENDAH sebagai failsafe agar tidak false positive!
+                                if val < RAP_DATABASE[cleanKey] then
+                                    RAP_DATABASE[cleanKey] = val
+                                end
+                            end
                             count = count + 1
                         end
                     end
@@ -165,10 +179,14 @@ function Util.SyncBbValues()
                     local count = 0
                     for k, v in pairs(parsed) do
                         local cleanKey = tostring(k):lower():gsub("%s+", "")
-                        RAP_DATABASE[cleanKey] = tonumber(v) or 0
+                        if type(v) == "table" then
+                            RAP_DATABASE[cleanKey] = v
+                        else
+                            RAP_DATABASE[cleanKey] = tonumber(v) or 0
+                        end
                         count = count + 1
                     end
-                    Util.Notify("📊 Cloud Database", string.format("Memuat %s item pasar resmi!", Util.FormatNumber(count)))
+                    Util.Notify("📊 Cloud Database", string.format("Memuat %s varian resmi!", Util.FormatNumber(count)))
                 end
             end
         end)
@@ -186,8 +204,15 @@ function Util.SendDiscordAlert(deals)
             local fields = {}
             for i = 1, math.min(#deals, 10) do
                 local d = deals[i]
+                local cat = d.Category or "Sword"
+                local catIcon = (cat == "Sword" and "🗡️ [Sword]") 
+                    or (cat == "Emote" and "💃 [Emote]") 
+                    or (cat == "Explosion" and "💥 [Explosion]") 
+                    or string.format("📦 [%s]", cat)
+
                 local fieldVal = string.format(
-                    "💰 **Harga:** `%s` tokens\n📊 **RAP (bbvalues):** `%s` tokens\n📈 **Profit:** `+%s` tokens (-%d%% OFF)\n👤 **Penjual:** `@%s`",
+                    "🏷️ **Tipe:** `%s`\n💰 **Harga:** `%s` tokens\n📊 **RAP (bbvalues):** `%s` tokens\n📈 **Profit:** `+%s` tokens (-%d%% OFF)\n👤 **Penjual:** `@%s`",
+                    cat,
                     Util.FormatNumber(d.Price),
                     Util.FormatNumber(d.RAP),
                     Util.FormatNumber(d.Profit),
@@ -195,7 +220,7 @@ function Util.SendDiscordAlert(deals)
                     d.Seller
                 )
                 table.insert(fields, {
-                    name = string.format("🗡️ #%d: %s", i, d.Name),
+                    name = string.format("%s #%d: %s", catIcon, i, d.Name),
                     value = fieldVal,
                     inline = true
                 })
@@ -211,7 +236,7 @@ function Util.SendDiscordAlert(deals)
 
             local embed = {
                 title = "🎯 BLADE BALL UNDER-RAP DEALS DETECTED!",
-                description = string.format("Ditemukan **%d deal** di Trade Plaza yang lolos filter!\n• Val 400-1500 (Under ≥100)\n• Val 1600+ (Under ≥200)", #deals),
+                description = string.format("Ditemukan **%d deal** di Trade Plaza yang lolos filter!\n• Val 400-1500 (Under ≥100)\n• Val 1600+ (Under ≥200)\n*(Kategori Sword/Emote/Explo diverifikasi)*", #deals),
                 color = 1095937, -- Emerald Green
                 fields = fields,
                 footer = {
@@ -320,24 +345,113 @@ function PlazaEngine.IsQualifiedDeal(rap, price)
     return false
 end
 
-function PlazaEngine.GetRapValue(itemName)
-    if not itemName or #itemName == 0 then return 0 end
-    local clean = itemName:lower():gsub("%s+", "")
-    
-    -- 1. Exact direct match (Prioritas Utama)
-    if RAP_DATABASE[clean] then 
-        return RAP_DATABASE[clean] 
+function PlazaEngine.DetectCategory(frame, itemName)
+    if not frame then return "Unknown" end
+
+    -- 0. Cek nama item langsung jika secara eksplisit mengandung jenisnya
+    local lowerName = tostring(itemName or ""):lower()
+    if lowerName:find("explosion") or lowerName:find("blast") or lowerName:find("detonation") then
+        return "Explosion"
     end
-    
-    -- 2. Exact match against database keys (mencegah salah deteksi substring)
-    for k, v in pairs(RAP_DATABASE) do
-        local cleanKey = tostring(k):lower():gsub("%s+", "")
-        if clean == cleanKey then
-            return v
+    if lowerName:find("emote") then
+        return "Emote"
+    end
+
+    -- 1. Cek Attributes pada frame atau itemBtn
+    local attrType = frame:GetAttribute("Type") or frame:GetAttribute("ItemType") or frame:GetAttribute("Category")
+    local itemBtn = frame:FindFirstChild("Frame")
+    if not attrType and itemBtn then
+        attrType = itemBtn:GetAttribute("Type") or itemBtn:GetAttribute("ItemType") or itemBtn:GetAttribute("Category")
+    end
+    if attrType then
+        local a = tostring(attrType):lower()
+        if a:find("sword") or a:find("weapon") then return "Sword"
+        elseif a:find("emote") then return "Emote"
+        elseif a:find("explo") then return "Explosion"
         end
     end
+
+    -- 2. Cek ViewportFrame (Model 3D yang ditampilkan)
+    local vp = frame:FindFirstChildWhichIsA("ViewportFrame", true)
+    if vp then
+        -- EMOTE di Blade Ball selalu menggunakan Model Dummy Karakter R15/R6 yang berpose
+        if vp:FindFirstChildWhichIsA("Humanoid", true) 
+           or vp:FindFirstChild("HumanoidRootPart", true)
+           or vp:FindFirstChild("Head", true)
+           or vp:FindFirstChild("UpperTorso", true)
+           or vp:FindFirstChild("Torso", true) then
+            return "Emote"
+        end
+
+        -- Cek objek di dalam ViewportFrame
+        for _, obj in ipairs(vp:GetDescendants()) do
+            local on = obj.Name:lower()
+            if on:find("sword") or on:find("katana") or on:find("blade") or on:find("scythe") or on:find("handle") or on:find("weapon") then
+                return "Sword"
+            elseif on:find("explosion") or on:find("vfx") or on:find("effect") or on:find("burst") or on:find("ball") then
+                return "Explosion"
+            end
+        end
+    end
+
+    -- 3. Cek ImageLabel / Icon / Badge
+    for _, img in ipairs(frame:GetDescendants()) do
+        if img:IsA("ImageLabel") and img.Visible then
+            local iname = img.Name:lower()
+            if iname:find("sword") then return "Sword"
+            elseif iname:find("emote") then return "Emote"
+            elseif iname:find("explo") then return "Explosion"
+            end
+        end
+    end
+
+    return "Unknown"
+end
+
+function PlazaEngine.GetRapValue(itemName, category)
+    if not itemName or #itemName == 0 then return 0 end
+    local clean = itemName:lower():gsub("%s+", "")
+    local catLower = category and category:lower() or "unknown"
     
-    return 0 -- Kembalikan 0 jika tidak ada di database (agar tidak terjadi false deal)
+    -- 1. Cari key spesifik kategori: misalnya "higanbanakatana#emote" atau "higanbanakatana#sword"
+    if catLower ~= "unknown" then
+        local specificKey = clean .. "#" .. catLower
+        if RAP_DATABASE[specificKey] then
+            local v = tonumber(RAP_DATABASE[specificKey])
+            if v and v > 0 then return v end
+        end
+    end
+
+    -- 2. Cek entry di database
+    local entry = RAP_DATABASE[clean]
+    if type(entry) == "table" then
+        -- Jika kategori terdeteksi, ambil nilai kategori tersebut
+        if catLower ~= "unknown" then
+            for cName, cVal in pairs(entry) do
+                if tostring(cName):lower() == catLower then
+                    return tonumber(cVal) or 0
+                end
+            end
+        end
+        
+        -- [PERLINDUNGAN ANTI-FALSE DEAL]:
+        -- Jika kategori TIDAK dapat dipastikan (Unknown), dan item punya 2 kategori (Sword vs Emote/Explo),
+        -- AMBIL NILAI TERENDAH! Agar jika yang dijual adalah Emote murah (misal 332), TIDAK dianggap deal Sword (4766).
+        local minVal = math.huge
+        for _, cVal in pairs(entry) do
+            local num = tonumber(cVal) or 0
+            if num > 0 and num < minVal then
+                minVal = num
+            end
+        end
+        if minVal ~= math.huge then
+            return minVal
+        end
+    elseif type(entry) == "number" then
+        return entry
+    end
+
+    return 0
 end
 
 function PlazaEngine.ScanAllBooths(statusCallback)
@@ -437,13 +551,15 @@ function PlazaEngine.ScanAllBooths(statusCallback)
                             end
 
                             if #itemName > 0 and itemName ~= "ItemName" and price > 0 then
-                                local rap = PlazaEngine.GetRapValue(itemName)
+                                local category = PlazaEngine.DetectCategory(frame, itemName)
+                                local rap = PlazaEngine.GetRapValue(itemName, category)
                                 local profit = (rap > 0) and (rap - price) or 0
                                 local discountPct = (rap > 0) and math.floor(((rap - price) / rap) * 100) or 0
                                 local isQualified = PlazaEngine.IsQualifiedDeal(rap, price)
 
                                 local listing = {
                                     Name = itemName,
+                                    Category = category,
                                     Price = price,
                                     RAP = rap,
                                     Profit = profit,
@@ -706,7 +822,9 @@ function UI.Build()
             nl.Position = UDim2.new(0, 8, 0, 4)
             nl.BackgroundTransparency = 1
             nl.TextColor3 = Color3.fromRGB(255, 255, 255)
-            nl.Text = d.Name
+            local cat = d.Category or "Item"
+            local catBadge = (cat == "Sword" and "[🗡️ SWORD] ") or (cat == "Emote" and "[💃 EMOTE] ") or (cat == "Explosion" and "[💥 EXPLO] ") or ""
+            nl.Text = catBadge .. d.Name
             nl.Font = Enum.Font.GothamBold
             nl.TextSize = 11
             nl.TextXAlignment = Enum.TextXAlignment.Left
