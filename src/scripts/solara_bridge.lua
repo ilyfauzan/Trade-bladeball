@@ -270,7 +270,16 @@ function Util.SendDiscordAlert(deals)
                     or (cat == "Explosion" and "💥") 
                     or "📦"
 
-                local embedColor = d.IsSpecial and 10181046 or ((d.Profit >= 1000) and 16098851 or 5763719)
+                local isOver = (d.Profit < 0)
+                local isEven = (d.Profit == 0)
+                local estUntung = (d.Profit > 0) and string.format("**+%s** tokens", Util.FormatNumber(d.Profit))
+                    or isEven and "**Pas RAP** (0 tokens)"
+                    or string.format("**-%s** tokens", Util.FormatNumber(math.abs(d.Profit)))
+
+                local embedColor = isOver and 16763904
+                    or isEven and 3901686
+                    or d.IsSpecial and 10181046 
+                    or ((d.Profit >= 1000) and 16098851 or 5763719)
 
                 local embed = {
                     title = string.format("%s %s", catIcon, d.Name),
@@ -287,8 +296,8 @@ function Util.SendDiscordAlert(deals)
                             inline = true
                         },
                         {
-                            name = "📈 Estimasi Untung",
-                            value = string.format("**+%s** tokens", Util.FormatNumber(d.Profit)),
+                            name = isOver and "📉 Selisih Harga" or "📈 Estimasi Untung",
+                            value = estUntung,
                             inline = true
                         },
                         {
@@ -418,7 +427,18 @@ function PlazaEngine.IsQualifiedDeal(rap, price, itemName, category)
         end
     end
 
-    -- [B] Kriteria Standar Under-RAP
+    -- [B] Item High-Tier 10k - 20k: Tampilkan juga walaupun TIDAK under RAP!
+    -- Kriteria: Value (RAP) berada di 10.000 s/d 20.000, harga booth tidak melebihi batas 22.000
+    if rap and rap >= 10000 and rap <= 20000 then
+        if price <= 22000 then
+            local highRule = {
+                Reason = "💎 High-Tier 10k-20k"
+            }
+            return true, true, highRule
+        end
+    end
+
+    -- [C] Kriteria Standar Under-RAP
     if not rap or rap <= 0 then return false, false, nil end
     local profit = rap - price
     if profit <= 0 then return false, false, nil end
@@ -768,7 +788,7 @@ function PlazaEngine.ScanAllBooths(statusCallback)
                                         effectiveRap = sRule.ResellTarget
                                         discountPct = math.floor(((sRule.ResellTarget - price) / sRule.ResellTarget) * 100)
                                     else
-                                        profit = (rap > price) and (rap - price) or 0
+                                        profit = (rap > 0) and (rap - price) or 0
                                     end
                                 end
 
