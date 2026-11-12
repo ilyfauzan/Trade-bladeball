@@ -417,19 +417,14 @@ function PlazaEngine.IsQualifiedDeal(rap, price, itemName, category)
     local profit = rap - price
     if profit <= 0 then return false, false, nil end
 
-    -- [Kriteria 1]: Item Value 400 - 1500 -> Tampilkan jika under 100 keatas (profit >= 100)
-    if rap >= 400 and rap <= 1500 then
+    -- [Kriteria 1]: Item Value 200 - 299 -> Tampilkan jika under 70 keatas (profit >= 70)
+    if rap >= 200 and rap < 300 then
+        return (profit >= 70), false, nil
+    end
+
+    -- [Kriteria 2]: Item Value 300 s/d Infinity -> Tampilkan jika under 100 keatas (profit >= 100)
+    if rap >= 300 then
         return (profit >= 100), false, nil
-    end
-
-    -- [Kriteria 2]: Item Value 1600 - 5000 -> Tampilkan jika under 200 keatas (profit >= 200)
-    if rap > 1500 and rap <= 5000 then
-        return (profit >= 200), false, nil
-    end
-
-    -- [Kriteria 3]: Item Value > 5000 (High-Tier) -> Tampilkan jika under 200 keatas
-    if rap > 5000 then
-        return (profit >= 200), false, nil
     end
 
     return false, false, nil
@@ -913,7 +908,7 @@ function UI.Build()
     sub.Size = UDim2.new(1, -60, 0, 16)
     sub.Position = UDim2.new(0, 14, 0, 24)
     sub.BackgroundTransparency = 1
-    sub.Text = "🎯 Val 400-1500 (Under ≥100) | 1600+ (Under ≥200)"
+    sub.Text = "🎯 Val 200-299 (Under ≥70) | 300+ (Under ≥100)"
     sub.TextColor3 = Color3.fromRGB(52, 211, 153)
     sub.Font = Enum.Font.GothamBold
     sub.TextSize = 8.5
@@ -1016,7 +1011,7 @@ function UI.Build()
             empty.Size = UDim2.new(1, 0, 0, 140)
             empty.BackgroundTransparency = 1
             empty.TextColor3 = Color3.fromRGB(148, 163, 184)
-            empty.Text = "Belum ada deal sesuai kriteria filter:\n• Value 400 - 1500 (Under ≥ 100)\n• Value 1600 - 5000 (Under ≥ 200)\n• Value > 5000 (Under ≥ 200)\n\nTekan '⚡ SCAN SEMUA BOOTH' di bawah!"
+            empty.Text = "Belum ada deal sesuai kriteria filter:\n• Value 200 - 299 (Under ≥ 70)\n• Value 300+ (Under ≥ 100)\n\nTekan '⚡ SCAN SEMUA BOOTH' di bawah!"
             empty.Font = Enum.Font.Gotham
             empty.TextSize = 9.5
             empty.Parent = paneDeals
