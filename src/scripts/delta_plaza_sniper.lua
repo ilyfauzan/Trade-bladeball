@@ -69,6 +69,16 @@ local RAP_DATABASE = {
 -- [3] MODULE: UTILITIES
 local Util = {}
 
+-- [Anti-AFK Protection untuk Redfinger / Emulator 24/7]
+pcall(function()
+    local VirtualUser = game:GetService("VirtualUser")
+    LocalPlayer.Idled:Connect(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end)
+end)
+
+
 function Util.FormatNumber(val)
     local n = tonumber(val) or 0
     local formatted = tostring(math.floor(n))
@@ -321,6 +331,14 @@ function Navigator.ServerHop(minPlayers, maxPlayers)
     maxPlayers = maxPlayers or 26
     Util.Notify("🌐 Server Hop", "Mencari server Trade Plaza yang aktif...", true)
 
+    -- [DELTA AUTO-EXECUTE]: Titipkan script ke executor agar otomatis berjalan di server baru!
+    local queue = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+    if queue then
+        pcall(function()
+            queue('loadstring(game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/scripts/delta_plaza_sniper.lua"))()')
+        end)
+    end
+
     local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
     if req then
         local url = string.format("https://games.roblox.com/v1/games/%s/servers/Public?sortOrder=Desc&limit=100", tostring(PlaceId))
@@ -355,7 +373,10 @@ local PlazaEngine = {
     IsScanning = false,
     AllListings = {},
     UnderRapDeals = {},
-    AutoHopWhenEmpty = false
+    AutoHopWhenEmpty = false,
+    AutoHop5Min = true,           -- Default ON untuk bot AFK 24/7 Redfinger
+    HopIntervalSeconds = 300,     -- 5 Menit = 300 detik
+    RemainingHopSeconds = 300
 }
 
 function PlazaEngine.IsQualifiedDeal(rap, price)
@@ -1201,9 +1222,58 @@ function UI.Build()
     makeHopBtn("👥 HOP KE SERVER RAMAI (>18 Pemain)", 54, Color3.fromRGB(14, 165, 233), function() Navigator.ServerHop(18, 30) end)
     makeHopBtn("🟢 HOP KE SERVER SEPI (<12 Pemain)", 100, Color3.fromRGB(16, 185, 129), function() Navigator.ServerHop(3, 12) end)
 
+    -- Box 1: Auto-Hop Tiap 5 Menit (AFK 24/7 Redfinger Mode)
+    local autoHop5MinBox = Instance.new("Frame")
+    autoHop5MinBox.Size = UDim2.new(1, 0, 0, 50)
+    autoHop5MinBox.Position = UDim2.new(0, 0, 0, 146)
+    autoHop5MinBox.BackgroundColor3 = Color3.fromRGB(18, 26, 46)
+    autoHop5MinBox.Parent = paneHop
+    Instance.new("UICorner", autoHop5MinBox).CornerRadius = UDim.new(0, 8)
+
+    local autoHop5MinTxt = Instance.new("TextLabel")
+    autoHop5MinTxt.Size = UDim2.new(1, -70, 0, 22)
+    autoHop5MinTxt.Position = UDim2.new(0, 10, 0, 4)
+    autoHop5MinTxt.BackgroundTransparency = 1
+    autoHop5MinTxt.TextColor3 = Color3.fromRGB(241, 245, 249)
+    autoHop5MinTxt.Text = "⏱️ Auto-Hop Tiap 5 Menit (AFK):"
+    autoHop5MinTxt.Font = Enum.Font.GothamBold
+    autoHop5MinTxt.TextSize = 10
+    autoHop5MinTxt.TextXAlignment = Enum.TextXAlignment.Left
+    autoHop5MinTxt.Parent = autoHop5MinBox
+
+    local autoHop5MinSub = Instance.new("TextLabel")
+    autoHop5MinSub.Size = UDim2.new(1, -70, 0, 20)
+    autoHop5MinSub.Position = UDim2.new(0, 10, 0, 26)
+    autoHop5MinSub.BackgroundTransparency = 1
+    autoHop5MinSub.TextColor3 = Color3.fromRGB(56, 189, 248)
+    autoHop5MinSub.Text = "Hop Server dalam: 05:00"
+    autoHop5MinSub.Font = Enum.Font.Gotham
+    autoHop5MinSub.TextSize = 9.5
+    autoHop5MinSub.TextXAlignment = Enum.TextXAlignment.Left
+    autoHop5MinSub.Parent = autoHop5MinBox
+
+    local btnToggleHop5 = Instance.new("TextButton")
+    btnToggleHop5.Size = UDim2.new(0, 52, 0, 30)
+    btnToggleHop5.Position = UDim2.new(1, -60, 0, 10)
+    btnToggleHop5.BackgroundColor3 = PlazaEngine.AutoHop5Min and Color3.fromRGB(16, 185, 129) or Color3.fromRGB(51, 65, 85)
+    btnToggleHop5.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btnToggleHop5.Text = PlazaEngine.AutoHop5Min and "ON" or "OFF"
+    btnToggleHop5.Font = Enum.Font.GothamBold
+    btnToggleHop5.TextSize = 10
+    btnToggleHop5.Parent = autoHop5MinBox
+    Instance.new("UICorner", btnToggleHop5).CornerRadius = UDim.new(0, 6)
+
+    btnToggleHop5.MouseButton1Click:Connect(function()
+        PlazaEngine.AutoHop5Min = not PlazaEngine.AutoHop5Min
+        btnToggleHop5.Text = PlazaEngine.AutoHop5Min and "ON" or "OFF"
+        btnToggleHop5.BackgroundColor3 = PlazaEngine.AutoHop5Min and Color3.fromRGB(16, 185, 129) or Color3.fromRGB(51, 65, 85)
+        Util.Notify("Auto-Hop 5 Menit", PlazaEngine.AutoHop5Min and "Diaktifkan! Server hop setiap 5 menit." or "Dimatikan.")
+    end)
+
+    -- Box 2: Auto-Hop jika kosong deal
     local autoHopBox = Instance.new("Frame")
-    autoHopBox.Size = UDim2.new(1, 0, 0, 48)
-    autoHopBox.Position = UDim2.new(0, 0, 0, 150)
+    autoHopBox.Size = UDim2.new(1, 0, 0, 44)
+    autoHopBox.Position = UDim2.new(0, 0, 0, 202)
     autoHopBox.BackgroundColor3 = Color3.fromRGB(18, 26, 46)
     autoHopBox.Parent = paneHop
     Instance.new("UICorner", autoHopBox).CornerRadius = UDim.new(0, 8)
@@ -1220,8 +1290,8 @@ function UI.Build()
     autoHopTxt.Parent = autoHopBox
 
     local btnToggleHop = Instance.new("TextButton")
-    btnToggleHop.Size = UDim2.new(0, 52, 0, 28)
-    btnToggleHop.Position = UDim2.new(1, -60, 0, 10)
+    btnToggleHop.Size = UDim2.new(0, 52, 0, 26)
+    btnToggleHop.Position = UDim2.new(1, -60, 0, 9)
     btnToggleHop.BackgroundColor3 = Color3.fromRGB(51, 65, 85)
     btnToggleHop.TextColor3 = Color3.fromRGB(255, 255, 255)
     btnToggleHop.Text = "OFF"
@@ -1235,6 +1305,24 @@ function UI.Build()
         btnToggleHop.Text = PlazaEngine.AutoHopWhenEmpty and "ON" or "OFF"
         btnToggleHop.BackgroundColor3 = PlazaEngine.AutoHopWhenEmpty and Color3.fromRGB(16, 185, 129) or Color3.fromRGB(51, 65, 85)
         Util.Notify("Auto-Hop", PlazaEngine.AutoHopWhenEmpty and "Aktif! Otomatis hop jika tak ada deal." or "Dimatikan.")
+    end)
+
+    -- Update label timer secara realtime
+    task.spawn(function()
+        while task.wait(1) do
+            pcall(function()
+                if autoHop5MinSub and autoHop5MinSub.Parent then
+                    if PlazaEngine.AutoHop5Min then
+                        local rem = PlazaEngine.RemainingHopSeconds or 0
+                        local mins = math.floor(rem / 60)
+                        local secs = rem % 60
+                        autoHop5MinSub.Text = string.format("Hop Server dalam: %02d:%02d", mins, secs)
+                    else
+                        autoHop5MinSub.Text = "Auto-Hop Dimatikan (Manual)"
+                    end
+                end
+            end)
+        end
     end)
 
     -- SWITCH TAB LOGIC
@@ -1288,9 +1376,25 @@ print("==========================================================")
 print("⚔️ BLADE BALL PLAZA SNIPER (DELTA EMULATOR) BERHASIL AKTIF!")
 print("==========================================================")
 
--- Scan otomatis pertama kali setelah script dieksekusi
+-- [1] Scan otomatis setelah tiba di server baru
 task.spawn(function()
-    task.wait(2)
-    PlazaEngine.ScanAllBooths(function() end)
+    task.wait(3)
+    PlazaEngine.ScanAllBooths(function(msg) end)
     if renderFn then renderFn() end
+end)
+
+-- [2] Loop Auto-Hop Tiap 5 Menit (AFK 24/7 Redfinger Mode)
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if PlazaEngine.AutoHop5Min then
+            PlazaEngine.RemainingHopSeconds = (PlazaEngine.RemainingHopSeconds or 300) - 1
+            if PlazaEngine.RemainingHopSeconds <= 0 then
+                Util.Notify("🌐 Auto-Hop (5 Menit)", "Waktu 5 menit tercapai! Melompat ke server Trade Plaza baru...", true)
+                task.wait(2)
+                Navigator.ServerHop(6, 26)
+                break
+            end
+        end
+    end
 end)
