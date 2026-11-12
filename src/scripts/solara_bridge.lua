@@ -69,12 +69,13 @@ local RAP_DATABASE = {
 -- [3] MODULE: UTILITIES
 local Util = {}
 
--- [Anti-AFK Protection untuk Redfinger / Emulator 24/7]
+-- [Safe Anti-Idle Protection - Bebas Deteksi BAC Anti-Cheat]
 pcall(function()
-    local VirtualUser = game:GetService("VirtualUser")
     LocalPlayer.Idled:Connect(function()
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new())
+        -- Jika idle terdeteksi, lakukan server hop bersih tanpa menyentuh VirtualUser
+        if Navigator and Navigator.ServerHop then
+            Navigator.ServerHop(6, 26)
+        end
     end)
 end)
 
@@ -679,11 +680,8 @@ function PlazaEngine.ScanAllBooths(statusCallback)
                     statusCallback(string.format("Booth %d/%d...", i, #activeStands))
                 end
 
-                -- Buka booth
-                local promptFired = pcall(function() fireproximityprompt(prompt) end)
-                if not promptFired then
-                    pcall(function() prompt:InputHoldBegin() task.wait(0.2) prompt:InputHoldEnd() end)
-                end
+                -- Buka booth (panggil fungsi aman executor)
+                pcall(function() fireproximityprompt(prompt) end)
 
                 -- Tunggu ScrollingList termuat
                 local waited = 0
@@ -759,7 +757,7 @@ function PlazaEngine.ScanAllBooths(statusCallback)
                     if closeBtn and closeBtn:IsA("ImageButton") then closeBtn.MouseButton1Click:Fire() end
                 end)
                 Util.UnfreezePlayer()
-                task.wait(0.2)
+                task.wait(0.35)
             end
         end)
     end
