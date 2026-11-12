@@ -8,8 +8,8 @@ function verifyApiKey(req, res, next) {
   const configuredKey = process.env.API_KEY;
   if (!configuredKey) return next(); // Jika tidak dikonfigurasi, lewati
 
-  // Izinkan request publik: semua GET, kalkulator trade, dan impor file master
-  if (req.method === 'GET' || req.path === '/trade/evaluate' || req.path === '/import-master') {
+  // Izinkan request publik: semua GET, kalkulator trade, impor file master, update item manual, dan Solara bridge
+  if (req.method === 'GET' || req.path === '/trade/evaluate' || req.path === '/import-master' || req.path === '/update-item' || req.path.startsWith('/bridge')) {
     return next();
   }
 
@@ -25,6 +25,190 @@ function verifyApiKey(req, res, next) {
 }
 
 router.use(verifyApiKey);
+
+// =========================================================================
+// REAL-TIME SOLARA BRIDGE CONTROLLER
+// Web ketik sword -> Web minta Solara -> Solara baca di Blade Ball -> Kirim ke Web
+// =========================================================================
+const pendingBridgeRequests = new Map();
+let latestBridgeCommand = null;
+let lastSolaraHeartbeat = 0;
+
+/**
+ * GET /api/bridge/status
+ * Cek apakah script Solara sedang aktif & terhubung di Roblox
+ */
+router.get('/bridge/status', (req, res) => {
+  const isConnected = (Date.now() - lastSolaraHeartbeat) < 5000;
+  return res.json({
+    success: true,
+    connected: isConnected,
+    lastSeenSecondsAgo: Math.round((Date.now() - lastSolaraHeartbeat) / 1000)
+  });
+});
+
+/**
+ * POST /api/bridge/query
+ * Dipanggil oleh Web Dashboard ketika user mengetik nama sword dan klik Cari
+ * Mengirim perintah ke Solara lalu menunggu respons live dari Blade Ball
+ */
+router.post('/bridge/query', async (req, res) => {
+  const { itemName } = req.body;
+  if (!itemName || !itemName.trim()) {
+    return res.status(400).json({ success: false, error: 'Nama sword wajib diisi.' });
+  }
+
+  const cleanName = itemName.trim();
+  const reqId = 'req_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+  const isConnected = (Date.now() - lastSolaraHeartbeat) < 5000;
+
+  // Set perintah untuk Solara
+  latestBridgeCommand = {
+    reqId,
+    itemName: cleanName,
+    createdAt: Date.now()
+  };
+
+  if (!isConnected) {
+    // Solara tidak terdeteksi, coba ambil dari database lokal
+    const localItem = itemService.getItemDetails(cleanName);
+    if (localItem && localItem.current_rap > 0) {
+      return res.json({
+        success: true,
+        source: 'DATABASE_CACHE',
+        solaraConnected: false,
+        message: 'Solara tidak aktif di Roblox. Menampilkan data dari database lokal.',
+        data: localItem
+      });
+    } else {
+      return res.json({
+        success: false,
+        source: 'NOT_FOUND',
+        solaraConnected: false,
+        error: `Solara belum dijalankan di Roblox! Jalankan script solara_bridge.lua di Solara saat berada di Blade Ball agar data bisa ditarik otomatis dari game.`
+      });
+    }
+  }
+
+  // Jika Solara terhubung, tunggu respons live (timeout 7 detik)
+  const promise = new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      pendingBridgeRequests.delete(reqId);
+      const fallbackItem = itemService.getItemDetails(cleanName);
+      if (fallbackItem && fallbackItem.current_rap > 0) {
+        resolve({
+          success: true,
+          source: 'DATABASE_FALLBACK_TIMEOUT',
+          message: 'Solara tidak merespons tepat waktu. Menampilkan data tersimpan.',
+          data: fallbackItem
+        });
+      } else {
+        resolve({
+          success: false,
+          error: `Solara sedang aktif tapi belum selesai memindai sword "${cleanName}" di game Blade Ball dalam 14 detik.`
+        });
+      }
+    }, 14000);
+
+    pendingBridgeRequests.set(reqId, {
+      resolve: (data) => {
+        clearTimeout(timer);
+        resolve({
+          success: true,
+          source: 'LIVE_BLADEBALL_SOLARA',
+          message: `Sukses! Data live "${cleanName}" berhasil ditarik dari Blade Ball via Solara!`,
+          data
+        });
+      }
+    });
+  });
+
+  const result = await promise;
+  return res.json(result);
+});
+
+/**
+ * GET /api/bridge/command
+ * Polling berkala (tiap 0.5 detik) oleh Solara di Roblox
+ */
+router.get('/bridge/command', (req, res) => {
+  lastSolaraHeartbeat = Date.now();
+
+  if (latestBridgeCommand) {
+    if (Date.now() - latestBridgeCommand.createdAt < 7000) {
+      const cmd = latestBridgeCommand;
+      latestBridgeCommand = null; // consume
+      return res.json({
+        hasCommand: true,
+        ...cmd
+      });
+    }
+    latestBridgeCommand = null;
+  }
+
+  return res.json({
+    hasCommand: false,
+    timestamp: Date.now()
+  });
+});
+
+/**
+ * POST /api/bridge/response
+ * Solara mengirimkan RAP & 5 Sales yang ditarik dari game Blade Ball
+ */
+router.post('/bridge/response', (req, res) => {
+  lastSolaraHeartbeat = Date.now();
+  const { reqId, itemName, currentRap, salesHistory, error } = req.body;
+
+  if (reqId && pendingBridgeRequests.has(reqId)) {
+    const pending = pendingBridgeRequests.get(reqId);
+    pendingBridgeRequests.delete(reqId);
+
+    if (error) {
+      const fallbackItem = itemService.getItemDetails(itemName);
+      if (fallbackItem) {
+        pending.resolve(fallbackItem);
+      } else {
+        pending.resolve({ name: itemName, status: 'NOT_FOUND', error });
+      }
+      return res.json({ success: true, handled: 'error_forwarded' });
+    }
+
+    try {
+      // Bersihkan riwayat lama agar 5 sales baru dari Solara langsung menjadi yang teratas
+      if (Array.isArray(salesHistory) && salesHistory.length > 0) {
+        db.prepare('DELETE FROM sales_history WHERE item_name = ? COLLATE NOCASE').run(itemName);
+      }
+
+      itemService.processSingleItem({
+        itemName,
+        currentRap: parseNumber(currentRap),
+        salesHistory: Array.isArray(salesHistory) ? salesHistory.map(parseNumber) : []
+      });
+
+      const fullItem = itemService.getItemDetails(itemName);
+      pending.resolve(fullItem);
+
+      return res.json({ success: true, message: `Data ${itemName} berhasil diproses dan dikirim ke web.` });
+    } catch (e) {
+      console.error('[Bridge Error]:', e);
+      return res.status(500).json({ success: false, error: e.message });
+    }
+  }
+
+  // Jika bukan request aktif, tetap simpan
+  if (itemName && currentRap) {
+    try {
+      itemService.processSingleItem({
+        itemName,
+        currentRap: parseNumber(currentRap),
+        salesHistory: Array.isArray(salesHistory) ? salesHistory.map(parseNumber) : []
+      });
+    } catch (e) {}
+  }
+
+  return res.json({ success: true, message: 'Diterima.' });
+});
 
 /**
  * POST /api/import-master
@@ -250,7 +434,9 @@ router.post('/trade/evaluate', (req, res) => {
             cleanRap: item.clean_rap,
             subtotalOfficialRap: offRap,
             subtotalCleanRap: clnRap,
-            status: item.status
+            status: item.status,
+            statusReason: item.status_reason,
+            recentSales: (item.salesHistory || []).slice(0, 5)
           });
         } else {
           analyzedList.push({
@@ -259,7 +445,9 @@ router.post('/trade/evaluate', (req, res) => {
             unknown: true,
             currentRap: 0,
             cleanRap: 0,
-            status: 'UNKNOWN'
+            status: 'UNKNOWN',
+            statusReason: 'Item belum ada di database',
+            recentSales: []
           });
           warnings.push(`❓ Item "${itemName}" belum ada di database.`);
         }

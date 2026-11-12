@@ -100,38 +100,60 @@ function processSingleItem(itemData) {
     throw new Error('Nama item (name/itemName) wajib disertakan');
   }
 
-  const category = itemData.category || 'Sword';
-  const rarity = itemData.rarity || 'Common';
+  // Ambil record yang sudah ada dari master catalog DULU
+  const existingItem = queries.findItemByName.get(name);
+
+  // Gunakan category dari master catalog jika incoming adalah 'Unknown' atau tidak ada
+  const incomingCategory = itemData.category || 'Unknown';
+  const category = (incomingCategory === 'Unknown' || !incomingCategory)
+    ? (existingItem ? existingItem.category : 'Unknown')
+    : incomingCategory;
+
+  const rarity = itemData.rarity || (existingItem ? existingItem.rarity : 'Common');
+
+  // Incoming RAP: jika 0/tidak ada, JANGAN timpa data master yang sudah ada
   const incomingRap = parseNumber(itemData.rap || itemData.currentRap || itemData.price || 0);
   const boothPrice = parseNumber(itemData.boothPrice || itemData.listingPrice || 0);
   const rawSales = Array.isArray(itemData.salesHistory || itemData.recentSales) 
     ? (itemData.salesHistory || itemData.recentSales) 
     : [];
 
-  // Ambil record yang sudah ada (jika ada)
-  const existingItem = queries.findItemByName.get(name);
+  // Jika item sudah punya RAP di master dan incoming RAP = 0,
+  // gunakan RAP master yang sudah ada (jangan timpa dengan 0)
+  const effectiveRap = incomingRap > 0 ? incomingRap : (existingItem ? existingItem.current_rap || 0 : 0);
   const previousCleanRap = existingItem ? existingItem.clean_rap : 0;
 
-  // Analisis harga & manipulasi
-  const analysis = analyzeItemPrice(incomingRap, rawSales, previousCleanRap);
+  // Analisis harga & manipulasi — gunakan effectiveRap bukan incomingRap
+  const analysis = analyzeItemPrice(effectiveRap, rawSales, previousCleanRap);
 
-  // Evaluasi jika ini listing di booth
+  // Evaluasi deal booth
+  // Gunakan clean_rap dari master jika analisis tidak menghasilkan nilai (karena RAP = 0)
+  const effectiveCleanRap = analysis.cleanRap > 0 
+    ? analysis.cleanRap 
+    : (existingItem ? existingItem.clean_rap || 0 : 0);
+  const effectiveCurrentRap = analysis.currentRap > 0 
+    ? analysis.currentRap 
+    : (existingItem ? existingItem.current_rap || 0 : 0);
+
   let dealEvaluation = { dealRating: 'UNKNOWN', verdict: '' };
-  if (boothPrice > 0) {
-    dealEvaluation = evaluateBoothDeal(boothPrice, analysis.cleanRap, analysis.status);
+  if (boothPrice > 0 && effectiveCleanRap > 0) {
+    dealEvaluation = evaluateBoothDeal(boothPrice, effectiveCleanRap, analysis.status);
+  } else if (boothPrice > 0) {
+    // Tidak ada RAP referensi, tidak bisa evaluasi deal
+    dealEvaluation = { dealRating: 'UNKNOWN', verdict: 'Harga RAP tidak tersedia' };
   }
 
-  // Simpan/Update item
+  // Simpan/Update item — JANGAN timpa RAP yang sudah ada dengan 0
   queries.upsertItem.run({
     name,
     category,
     rarity,
-    current_rap: analysis.currentRap,
-    clean_rap: analysis.cleanRap,
-    status: analysis.status,
-    status_reason: analysis.statusReason,
+    current_rap: effectiveCurrentRap,
+    clean_rap: effectiveCleanRap,
+    status: effectiveCurrentRap > 0 ? analysis.status : (existingItem ? existingItem.status : 'UNKNOWN'),
+    status_reason: analysis.statusReason || (existingItem ? existingItem.status_reason : ''),
     last_deal_rating: dealEvaluation.dealRating,
-    last_seen_price: boothPrice > 0 ? boothPrice : analysis.currentRap,
+    last_seen_price: boothPrice > 0 ? boothPrice : effectiveCurrentRap,
     sales_sample_count: rawSales.length
   });
 
@@ -159,9 +181,9 @@ function processSingleItem(itemData) {
     name,
     category,
     rarity,
-    currentRap: analysis.currentRap,
-    cleanRap: analysis.cleanRap,
-    status: analysis.status,
+    currentRap: effectiveCurrentRap,
+    cleanRap: effectiveCleanRap,
+    status: effectiveCurrentRap > 0 ? analysis.status : (existingItem ? existingItem.status : 'UNKNOWN'),
     statusReason: analysis.statusReason,
     boothPrice: boothPrice > 0 ? boothPrice : null,
     dealRating: dealEvaluation.dealRating,
@@ -230,7 +252,15 @@ function searchItems({ search, category, status, limit = 50, page = 1 }) {
     offset
   };
 
-  const items = queries.searchItems.all(params);
+  const rawItems = queries.searchItems.all(params);
+  const items = rawItems.map(item => {
+    const sales = queries.getRecentSales.all(item.name);
+    return {
+      ...item,
+      recentSales: (sales || []).slice(0, 5)
+    };
+  });
+
   const { total } = queries.countItems.get({
     search: params.search,
     category: params.category,

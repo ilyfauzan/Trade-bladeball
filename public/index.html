@@ -46,6 +46,11 @@
           <span class="label">Nuked:</span>
           <span class="val" id="ticker-nuked">...</span>
         </div>
+        <div class="ticker-pill pill-bridge" id="pill-bridge-status" title="Status koneksi Solara script di game Roblox">
+          <span class="pulse-dot" id="bridge-pulse-dot" style="background-color: #64748b;"></span>
+          <span class="label">Solara:</span>
+          <span class="val" id="bridge-status-text" style="color: #94a3b8;">Menunggu Game</span>
+        </div>
         <div class="server-status">
           <span class="status-indicator online" id="status-indicator"></span>
           <span class="status-text" id="status-text">Server Online</span>
@@ -70,12 +75,6 @@
         </svg>
         <span>Katalog & Pencarian A-Z</span>
       </button>
-      <button class="nav-tab" data-tab="tab-booths" id="btn-tab-booths">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon">
-          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-        </svg>
-        <span>Radar Booth & Deals</span>
-      </button>
     </nav>
   </header>
 
@@ -89,7 +88,7 @@
       <!-- Top Alert Banner (Appears if trade contains projected items) -->
       <div class="verdict-banner" id="verdict-banner" style="display: none;">
         <div class="verdict-content">
-          <div class="verdict-icon" id="verdict-icon">⚠️</div>
+          <div class="verdict-icon" id="verdict-icon">âš ï¸</div>
           <div>
             <h2 class="verdict-title" id="verdict-title">Menunggu Evaluasi...</h2>
             <p class="verdict-desc" id="verdict-desc">Tambahkan item pada kedua sisi untuk menganalisis keadilan trade.</p>
@@ -109,6 +108,86 @@
 
       <!-- Warnings Container -->
       <div id="trade-warnings-container" class="warnings-container" style="display: none;"></div>
+
+      <!-- ======================================================= -->
+      <!-- FITUR UTAMA: PENGECEK PEDANG INSTAN (RAP + 5 SALES + STATUS) -->
+      <!-- ======================================================= -->
+      <div class="quick-inspector-card">
+        <div class="inspector-header">
+          <div class="inspector-title-wrap">
+            <div class="inspector-badge-icon">🔍</div>
+            <div>
+              <h3 class="inspector-title">Pengecek Pedang & Manipulasi Harga</h3>
+              <p class="inspector-sub">Masukkan nama sword untuk langsung melihat RAP Price, 5 Sales Terakhir, serta deteksi NUKED atau BOOSTED</p>
+            </div>
+          </div>
+          <button class="btn-manual-update" id="btn-open-manual-update" title="Input manual RAP & 5 Sales baru">
+            ✏️ Input Data RAP & 5 Sales
+          </button>
+        </div>
+
+        <div class="inspector-search-row">
+          <div class="inspector-input-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="inspector-search-input" placeholder="Ketik nama pedang (contoh: Singularity Katana, Glitch Katana, Dragon Blade)..." autocomplete="off">
+            <div class="autocomplete-dropdown" id="dropdown-inspector" style="display: none;"></div>
+          </div>
+          <button class="btn-inspector-action" id="btn-inspector-search">Cari & Analisis</button>
+        </div>
+
+        <!-- Live Inspector Result Card -->
+        <div class="inspector-result-card" id="inspector-result-card" style="display: none;">
+          <div class="res-card-top">
+            <div>
+              <div class="res-meta-line" id="inspector-meta">Sword • Mythical</div>
+              <h2 class="res-name" id="inspector-name">Nama Sword</h2>
+            </div>
+            <div class="res-status-wrap">
+              <span class="status-badge" id="inspector-status-badge">NORMAL</span>
+            </div>
+          </div>
+
+          <!-- RAP Price Overview Grid -->
+          <div class="res-rap-grid">
+            <div class="res-rap-box clean">
+              <span class="res-box-label">Clean RAP (Nilai Riil Bersih):</span>
+              <span class="res-box-val highlight-cyan" id="inspector-clean-rap">0</span>
+              <small class="res-box-sub">Bebas manipulasi & transaksi palsu</small>
+            </div>
+            <div class="res-rap-box official">
+              <span class="res-box-label">Official RAP (Nominal Game):</span>
+              <span class="res-box-val" id="inspector-official-rap">0</span>
+              <small class="res-box-sub" id="inspector-ratio-text">Rasio: 1.00x</small>
+            </div>
+          </div>
+
+          <!-- 5 Sales Terakhir Section -->
+          <div class="res-sales-section">
+            <div class="res-sales-header">
+              <span class="res-sales-title">📊 5 Riwayat Transaksi Terakhir (Sales History):</span>
+              <span class="res-sales-hint">Deteksi transaksi dump 1 token atau pump tidak wajar</span>
+            </div>
+            <div class="res-sales-chips" id="inspector-sales-chips">
+              <!-- Injected via JS -->
+            </div>
+          </div>
+
+          <!-- Diagnosis & Trade Advice -->
+          <div class="res-diagnosis-box" id="inspector-diagnosis-box">
+            <div class="diag-title" id="inspector-diag-title">💡 Analisis Status Pasar:</div>
+            <div class="diag-desc" id="inspector-diag-desc">Harga stabil dan tidak terdeteksi manipulasi pasar.</div>
+          </div>
+
+          <!-- Quick Add to Trade Buttons -->
+          <div class="res-actions-bar">
+            <button class="btn-add-trade my" id="btn-inspect-add-my">+ Tambah ke Sisi Anda</button>
+            <button class="btn-add-trade their" id="btn-inspect-add-their">+ Tambah ke Sisi Lawan</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Trade Dual Grid -->
       <div class="trade-grid">
@@ -212,7 +291,7 @@
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input type="text" id="catalog-search-input" placeholder="Cari 1.600+ Pedang & Explosions A–Z..." autocomplete="off">
+            <input type="text" id="catalog-search-input" placeholder="Cari 1.600+ Pedang & Explosions Aâ€“Z..." autocomplete="off">
             <button id="catalog-search-clear" class="btn-input-clear" style="display: none;">&times;</button>
           </div>
 
@@ -245,10 +324,10 @@
             <span class="filter-label">Status Pasar:</span>
             <div class="pills-row" id="status-pills">
               <button class="pill active" data-status="">Semua</button>
-              <button class="pill pill-danger" data-status="PROJECTED">🚨 Projected</button>
-              <button class="pill pill-warning" data-status="NUKED">💥 Nuked</button>
-              <button class="pill pill-info" data-status="BOOSTED">⚡ Boosted</button>
-              <button class="pill pill-success" data-status="NORMAL">🟢 Normal</button>
+              <button class="pill pill-danger" data-status="PROJECTED">ðŸš¨ Projected</button>
+              <button class="pill pill-warning" data-status="NUKED">ðŸ’¥ Nuked</button>
+              <button class="pill pill-info" data-status="BOOSTED">âš¡ Boosted</button>
+              <button class="pill pill-success" data-status="NORMAL">ðŸŸ¢ Normal</button>
             </div>
           </div>
         </div>
@@ -267,31 +346,7 @@
       </div>
     </section>
 
-    <!-- ========================================== -->
-    <!-- TAB 3: RADAR BOOTH & DEALS                 -->
-    <!-- ========================================== -->
-    <section class="tab-pane" id="tab-booths">
-      <div class="radar-header">
-        <div>
-          <h2>Radar Listing Booth Trade Plaza</h2>
-          <p>Daftar penawaran yang dibaca oleh script Scraper Solara/Delta secara live.</p>
-        </div>
-        <div class="radar-actions">
-          <button class="btn-refresh" id="btn-refresh-booths">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="refresh-icon">
-              <path d="M23 4v6h-6"></path>
-              <path d="M1 20v-6h6"></path>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-            </svg>
-            <span>Segarkan</span>
-          </button>
-        </div>
-      </div>
 
-      <div class="booth-deals-grid" id="booth-deals-grid">
-        <!-- Live feed entries injected dynamically -->
-      </div>
-    </section>
 
   </main>
 
@@ -311,6 +366,40 @@
     </div>
   </div>
 
+  <!-- Modal Input RAP & 5 Sales Baru -->
+  <div class="modal-overlay" id="modal-update" style="display: none;">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-header">
+        <div>
+          <span class="badge" style="background: rgba(99,102,241,0.2); color: #818cf8;">Input Data Transaksi</span>
+          <h2>Perbarui RAP & 5 Sales Sword</h2>
+        </div>
+        <button class="btn-close-modal" id="btn-close-update-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-update-item" style="display: flex; flex-direction: column; gap: 1rem;">
+          <div>
+            <label style="display: block; font-size: 0.82rem; font-weight: 700; color: #94a3b8; margin-bottom: 0.35rem;">Nama Sword:</label>
+            <input type="text" id="up-item-name" placeholder="Contoh: Singularity Katana" required style="width: 100%; background: #0b0f19; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 0.65rem 0.85rem; color: #fff; font-size: 0.9rem;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.82rem; font-weight: 700; color: #94a3b8; margin-bottom: 0.35rem;">RAP Price Game (Current Nominal RAP):</label>
+            <input type="number" id="up-current-rap" placeholder="Contoh: 3600 atau 25000" required style="width: 100%; background: #0b0f19; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 0.65rem 0.85rem; color: #fff; font-size: 0.9rem;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.82rem; font-weight: 700; color: #94a3b8; margin-bottom: 0.35rem;">5 Riwayat Transaksi Terakhir (Pisahkan dengan koma):</label>
+            <input type="text" id="up-sales-history" placeholder="Contoh: 18000, 17500, 1, 18200, 1" required style="width: 100%; background: #0b0f19; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 0.65rem 0.85rem; color: #fff; font-size: 0.9rem;">
+            <small style="display: block; font-size: 0.75rem; color: #64748b; margin-top: 0.3rem;">Ketik 5 harga transaksi yang Anda lihat di game. Sistem otomatis mendeteksi apakah NUKED (misal ada transaksi 1 token) atau BOOSTED/PROJECTED.</small>
+          </div>
+          <button type="submit" id="btn-submit-update" style="background: linear-gradient(135deg, #4f46e5, #06b6d4); color: #fff; font-weight: 700; border: none; padding: 0.75rem; border-radius: 8px; cursor: pointer; margin-top: 0.5rem; transition: transform 0.15s ease;">
+            💾 Simpan & Analisis Manipulasi
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/app.js"></script>
 </body>
 </html>
+

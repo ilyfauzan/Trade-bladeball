@@ -85,6 +85,9 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`====================================================`);
 });
 
+// Keep event loop active
+setInterval(() => {}, 1000 * 60 * 60);
+
 // Graceful Shutdown
 function gracefulShutdown(signal) {
   console.log(`\n[Shutdown] Menerima sinyal ${signal}, menutup koneksi database...`);

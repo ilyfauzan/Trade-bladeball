@@ -1,62 +1,42 @@
---[[
+﻿--[[
     =================================================================================
-    ⚔️ BLADE BALL TRADE PLAZA - REAL-TIME BOOTH SCRAPER (VERIFIED FOR HUB.STANDS)
+    BLADE BALL BOOTH AUTO-SCANNER v4 - FULLY AUTOMATIC
     =================================================================================
-    Struktur Folder Game: Workspace.Spawn.Hub.Stands
-    Target API: http://127.0.0.1:3001/api
+    Script ini otomatis:
+    1. Loop semua 32 Stand di Workspace.Spawn.Hub.Stands
+    2. Fire ProximityPrompt setiap booth yang aktif (ada Owner)
+    3. Baca semua item + harga dari UI PlayersBooth
+    4. Kirim ke dashboard
+    5. Tutup booth, lanjut ke berikutnya
+    6. Ulangi setiap 3 menit (auto-refresh)
+
+    CARA PAKAI: Run script ini di Solara, lalu biarkan saja!
     =================================================================================
 --]]
 
-local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
-local LocalPlayer = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
 
--- Menggunakan IP 127.0.0.1 (terbukti sukses terhubung dengan Solara di log server)
+local LocalPlayer = Players.LocalPlayer
 local SERVER_URL = "http://127.0.0.1:3001/api"
 local API_KEY = "bb_trade_plaza_secret_2026"
+local SCAN_INTERVAL = 180  -- scan ulang setiap 3 menit
 
 local sendHttpRequest = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
 if not sendHttpRequest then
-    warn("❌ Executor Anda tidak mendukung fungsi HTTP request!")
+    warn("[BB] Executor tidak support HTTP request!")
     return
 end
 
 local function notify(title, text)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
-            Title = title,
-            Text = text,
-            Duration = 5
+            Title = title, Text = text, Duration = 5
         })
     end)
 end
 
-local function postData(endpoint, dataTable)
-    local success, jsonPayload = pcall(function()
-        return HttpService:JSONEncode(dataTable)
-    end)
-    if not success then return nil end
-
-    local response = sendHttpRequest({
-        Url = SERVER_URL .. endpoint,
-        Method = "POST",
-        Headers = {
-            ["Content-Type"] = "application/json",
-            ["x-api-key"] = API_KEY
-        },
-        Body = jsonPayload
-    })
-
-    if response and (response.StatusCode == 200 or response.StatusCode == 201) then
-        return HttpService:JSONDecode(response.Body)
-    else
-        warn("[BB Bridge] HTTP Error (" .. tostring(response and response.StatusCode) .. "):", response and response.Body)
-        return nil
-    end
-end
-
--- Parser angka / harga
 local function parsePrice(text)
     if not text then return 0 end
     local str = tostring(text):lower():gsub(",", ""):gsub("%s+", "")
@@ -68,169 +48,331 @@ local function parsePrice(text)
     return math.floor(val)
 end
 
--- =================================================================================
--- FUNGSI SCAN SEMUA BOOTH DI WORKSPACE.SPAWN.HUB.STANDS
--- =================================================================================
-local function scanAllBooths()
-    print("\n[BB Bridge] 🔍 MEMULAI PEMINDAIAN BOOTH DI Workspace.Spawn.Hub.Stands...")
+local function postData(dataTable)
+    local ok, json = pcall(function()
+        return HttpService:JSONEncode(dataTable)
+    end)
+    if not ok then return false end
+    local res = sendHttpRequest({
+        Url = SERVER_URL .. "/booth-feed",
+        Method = "POST",
+        Headers = { ["Content-Type"] = "application/json", ["x-api-key"] = API_KEY },
+        Body = json
+    })
+    return res and (res.StatusCode == 200 or res.StatusCode == 201)
+end
 
-    local standsFolder = workspace:FindFirstChild("Spawn") 
-        and workspace.Spawn:FindFirstChild("Hub") 
-        and workspace.Spawn.Hub:FindFirstChild("Stands")
+-- ============================================================
+-- BACA BOOTH UI (PlayerGui.Booth.PlayersBooth)
+-- ============================================================
+local function readBoothUI(playersBooth)
+    local items = {}
+    local sellerName = "Unknown"
 
-    if not standsFolder then
-        -- Fallback pencarian fleksibel
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj.Name == "Stands" and obj:IsA("Folder") or obj:IsA("Model") then
-                standsFolder = obj
-                break
+    local topFrame = playersBooth:FindFirstChild("Top")
+    if topFrame then
+        local lbl = topFrame:FindFirstChild("PlayerName")
+        if lbl then
+            sellerName = lbl.Text:gsub("'s Booth", ""):match("^%s*(.-)%s*$") or "Unknown"
+            local preview = lbl:GetAttribute("TextPreview")
+            if preview and #preview > 0 then sellerName = preview end
+        end
+    end
+
+    local scrollList = playersBooth:FindFirstChild("ScrollingList")
+    if not scrollList then return items, sellerName end
+
+    for _, frame in ipairs(scrollList:GetChildren()) do
+        if frame:IsA("Frame") and frame.Name ~= "Frame" then
+            local itemName, price = "", 0
+
+            local itemBtn = frame:FindFirstChild("Frame")
+            if itemBtn and itemBtn:IsA("ImageButton") then
+                local lbl = itemBtn:FindFirstChild("ItemName")
+                if lbl then itemName = lbl.Text or "" end
+            end
+
+            local buyBtn = frame:FindFirstChild("BuyButton")
+            if buyBtn then
+                local list = buyBtn:FindFirstChild("List")
+                if list then
+                    local amt = list:FindFirstChild("Amount")
+                    if amt then price = parsePrice(amt.Text) end
+                end
+            end
+
+            if #itemName > 0 and itemName ~= "ItemName" then
+                table.insert(items, {
+                    itemName = itemName,
+                    category = "Unknown",
+                    boothPrice = price,
+                    currentRap = 0,
+                    seller = sellerName,
+                    boothId = sellerName .. "_booth"
+                })
             end
         end
     end
 
+    return items, sellerName
+end
+
+-- ============================================================
+-- FIRE PROXIMITY PROMPT (executor function)
+-- ============================================================
+local function firePrompt(prompt)
+    -- Coba berbagai cara yang didukung executor
+    local ok = false
+    ok = pcall(function() fireproximityprompt(prompt) end)
+    if not ok then
+        ok = pcall(function() prompt:InputHoldBegin() task.wait(0.2) prompt:InputHoldEnd() end)
+    end
+    return ok
+end
+
+-- ============================================================
+-- CLOSE BOOTH UI
+-- ============================================================
+local function closeBooth(playersBooth)
+    pcall(function()
+        local closeBtn = playersBooth:FindFirstChild("Close")
+        if closeBtn and closeBtn:IsA("ImageButton") then
+            closeBtn.MouseButton1Click:Fire()
+        end
+    end)
+end
+
+-- ============================================================
+-- AUTO-SCAN SEMUA BOOTH
+-- ============================================================
+local isScanning = false
+
+local function autoScanAllBooths(statusLabel)
+    if isScanning then return end
+    isScanning = true
+
+    local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pGui then isScanning = false return end
+
+    local boothGui = pGui:FindFirstChild("Booth")
+    if not boothGui then
+        warn("[BB] ScreenGui 'Booth' belum ada di PlayerGui! Pastikan kamu di Trade Plaza.")
+        isScanning = false
+        return
+    end
+
+    local playersBooth = boothGui:FindFirstChild("PlayersBooth")
+    if not playersBooth then
+        warn("[BB] PlayersBooth tidak ditemukan!")
+        isScanning = false
+        return
+    end
+
+    -- Ambil semua Stand
+    local standsFolder = workspace:FindFirstChild("Spawn")
+        and workspace.Spawn:FindFirstChild("Hub")
+        and workspace.Spawn.Hub:FindFirstChild("Stands")
+
     if not standsFolder then
-        warn("[BB Bridge] ❌ Folder Stands tidak ditemukan di Workspace!")
+        warn("[BB] Stands folder tidak ditemukan!")
+        isScanning = false
         return
     end
 
     local stands = standsFolder:GetChildren()
-    print(string.format("[BB Bridge] 📌 Ditemukan %d Stand di Trade Plaza!", #stands))
+    local activeStands = {}
+    for _, stand in ipairs(stands) do
+        if stand:GetAttribute("Owner") ~= nil then
+            table.insert(activeStands, stand)
+        end
+    end
 
-    local scannedItems = {}
+    print(string.format("[BB] Ditemukan %d/%d booth aktif. Memulai scan...", #activeStands, #stands))
+    if statusLabel then
+        statusLabel.Text = "Scanning " .. #activeStands .. " booth..."
+    end
+    notify("📡 Auto-Scan", "Menemukan " .. #activeStands .. " booth aktif!")
 
-    for index, stand in ipairs(stands) do
+    local totalItems = 0
+    local allItems = {}
+
+    for i, stand in ipairs(activeStands) do
         pcall(function()
-            local ownerName = "Unknown"
-            local itemName = ""
-            local boothPrice = 0
-            local currentRap = 0
+            -- Cari ProximityPrompt di Root
+            local root = stand:FindFirstChild("Root")
+            if not root then return end
 
-            -- 1. Cek Attributes pada Stand, Booth, atau Root
-            local attrs = stand:GetAttributes()
-            for k, v in pairs(attrs) do
-                local kl = k:lower()
-                if kl:find("owner") or kl:find("player") or kl:find("user") then ownerName = tostring(v)
-                elseif kl:find("item") or kl:find("sword") or kl:find("name") then itemName = tostring(v)
-                elseif kl:find("price") or kl:find("token") or kl:find("cost") then boothPrice = parsePrice(v)
-                elseif kl:find("rap") then currentRap = parsePrice(v) end
+            local holder = root:FindFirstChild("ProximityPromptHolder")
+            if not holder then return end
+
+            local prompt = holder:FindFirstChildWhichIsA("ProximityPrompt")
+            if not prompt then return end
+
+            if statusLabel then
+                statusLabel.Text = string.format("Booth %d/%d...", i, #activeStands)
             end
 
-            -- 2. Cek semua TextLabel dan Value di dalam Stand (BillboardGui, SurfaceGui, dsb)
-            for _, desc in ipairs(stand:GetDescendants()) do
-                if desc:IsA("TextLabel") and desc.Text and #desc.Text > 0 then
-                    local t = desc.Text
-                    local tl = t:lower()
+            -- Fire prompt untuk buka booth
+            firePrompt(prompt)
 
-                    -- Deteksi Pemilik
-                    if tl:find("'s booth") or tl:find("booth of") then
-                        ownerName = t:gsub("'s booth", ""):gsub("Booth of", ""):gsub("%s+", "")
-                    -- Deteksi RAP
-                    elseif tl:find("rap") then
-                        currentRap = parsePrice(t)
-                    -- Deteksi Harga
-                    elseif tl:find("price") or tl:find("tokens") or tl:find("gems") or t:find("^%d+[,%d]*$") then
-                        local p = parsePrice(t)
-                        if p > 0 and boothPrice == 0 then boothPrice = p end
-                    -- Deteksi Nama Item (panjang teks > 2 dan bukan sekadar angka murni)
-                    elseif not t:find("^%d+$") and not tl:find("claim") and not tl:find("stand") and not tl:find("prompt") then
-                        if #t > 2 and itemName == "" then
-                            itemName = t:gsub("%[.-%]", ""):match("^%s*(.-)%s*$")
+            -- Tunggu UI populate (maks 3 detik)
+            local waited = 0
+            local scrollList = playersBooth:FindFirstChild("ScrollingList")
+            while waited < 3 do
+                if scrollList then
+                    local children = scrollList:GetChildren()
+                    -- Cek apakah ada Frame dengan data nyata (bukan template)
+                    local realFrames = 0
+                    for _, c in ipairs(children) do
+                        if c:IsA("Frame") and c.Name ~= "Frame" then
+                            realFrames = realFrames + 1
                         end
                     end
-                elseif desc:IsA("StringValue") then
-                    if desc.Name:lower():find("item") then itemName = desc.Value
-                    elseif desc.Name:lower():find("owner") then ownerName = desc.Value end
-                elseif desc:IsA("NumberValue") or desc:IsA("IntValue") then
-                    if desc.Name:lower():find("price") then boothPrice = desc.Value
-                    elseif desc.Name:lower():find("rap") then currentRap = desc.Value end
+                    if realFrames > 0 then break end
+                end
+                task.wait(0.3)
+                waited = waited + 0.3
+            end
+
+            -- Baca data booth
+            local items, seller = readBoothUI(playersBooth)
+
+            if #items > 0 then
+                print(string.format("[BB] ✅ Booth '%s': %d item", seller, #items))
+                totalItems = totalItems + #items
+                for _, item in ipairs(items) do
+                    table.insert(allItems, item)
                 end
             end
 
-            -- Jika ditemukan item atau harga valid di booth ini
-            if (#itemName > 2 or boothPrice > 0) and ownerName ~= "Unknown" then
-                if itemName == "" then itemName = "Booth Item #" .. tostring(index) end
-                print(string.format("  [Booth %d] Penjual: %s | Item: %s | Harga: %d | RAP: %d", index, ownerName, itemName, boothPrice, currentRap))
-                table.insert(scannedItems, {
-                    itemName = itemName,
-                    category = "Sword",
-                    boothPrice = boothPrice > 0 and boothPrice or currentRap,
-                    currentRap = currentRap,
-                    seller = ownerName,
-                    boothId = stand.Name
-                })
-            end
+            -- Tutup booth
+            closeBooth(playersBooth)
+            task.wait(0.6) -- jeda antar booth
         end)
     end
 
-    print(string.format("[BB Bridge] 📊 Total item booth berhasil dibaca: %d", #scannedItems))
-
-    if #scannedItems > 0 then
-        local res = postData("/booth-feed", scannedItems)
-        if res and res.success then
-            notify("✅ Sync Berhasil!", "Mengirim " .. tostring(res.count) .. " item ke Web Tracker!")
-            print("==========================================================")
-            print("🚀 SUKSES MENGIRIM " .. tostring(res.count) .. " BOOTH KE DASHBOARD WEB!")
-            print("==========================================================")
+    -- Kirim semua data sekaligus
+    if #allItems > 0 then
+        local ok = postData(allItems)
+        if ok then
+            print(string.format("[BB] 🚀 SUKSES! %d item dari %d booth terkirim ke dashboard!", #allItems, #activeStands))
+            notify("✅ Scan Selesai!", totalItems .. " item dari " .. #activeStands .. " booth!")
+            if statusLabel then
+                statusLabel.Text = "✅ " .. totalItems .. " item terkirim!"
+            end
+        else
+            notify("⚠️ Server Error", "Cek apakah Node.js server aktif!")
+            if statusLabel then statusLabel.Text = "⚠️ Gagal kirim!" end
         end
     else
-        -- Jika pembacaan textlabel belum menemukan teks spesifik, mari dump 1 booth agar kita lihat isinya
-        print("[BB Bridge] ⚠️ Belum ada booth aktif yang terbaca teksnya. Mari bedah isi Stand pertama:")
-        if stands[1] then
-            for _, d in ipairs(stands[1]:GetDescendants()) do
-                if d:IsA("TextLabel") or d:IsA("BillboardGui") or d:IsA("SurfaceGui") or d:IsA("ValueBase") then
-                    print("   -> " .. d.ClassName .. ": " .. d.Name .. (d:IsA("TextLabel") and (" [Text: " .. d.Text .. "]") or ""))
-                end
-            end
-        end
+        print("[BB] Tidak ada item ditemukan. Booth mungkin kosong atau prompt gagal.")
+        notify("ℹ️ Info", "Tidak ada item. Coba dekat ke booth dulu.")
+        if statusLabel then statusLabel.Text = "Tidak ada item ditemukan." end
     end
+
+    isScanning = false
 end
 
--- =================================================================================
--- TOMBOL SCREEN GUI CEPAT
--- =================================================================================
-local function createMiniScreenButton()
+-- ============================================================
+-- SCREEN GUI
+-- ============================================================
+local function createGui()
     local pGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not pGui then return end
 
-    local existing = pGui:FindFirstChild("BBTrackerGui")
-    if existing then existing:Destroy() end
+    local old = pGui:FindFirstChild("BBTrackerGui")
+    if old then old:Destroy() end
 
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "BBTrackerGui"
-    screenGui.ResetOnSpawn = false
-    screenGui.Parent = pGui
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "BBTrackerGui"
+    sg.ResetOnSpawn = false
+    sg.Parent = pGui
 
-    local scanBtn = Instance.new("TextButton")
-    scanBtn.Name = "ScanBtn"
-    scanBtn.Size = UDim2.new(0, 150, 0, 44)
-    scanBtn.Position = UDim2.new(0, 20, 0.45, 0)
-    scanBtn.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
-    scanBtn.TextColor3 = Color3.fromRGB(56, 189, 248)
-    scanBtn.Text = "📡 SCAN BOOTHS"
-    scanBtn.Font = Enum.Font.GothamBold
-    scanBtn.TextSize = 13
-    scanBtn.Parent = screenGui
+    -- Container
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 165, 0, 90)
+    frame.Position = UDim2.new(0, 12, 0.42, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(8, 14, 32)
+    frame.BorderSizePixel = 0
+    frame.Parent = sg
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+    local fStroke = Instance.new("UIStroke", frame)
+    fStroke.Color = Color3.fromRGB(99, 102, 241)
+    fStroke.Thickness = 1.5
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = scanBtn
+    -- Judul
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 22)
+    title.Position = UDim2.new(0, 0, 0, 6)
+    title.BackgroundTransparency = 1
+    title.TextColor3 = Color3.fromRGB(56, 189, 248)
+    title.Text = "⚔️ BB Auto Tracker"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 11
+    title.Parent = frame
 
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(99, 102, 241)
-    stroke.Thickness = 1.5
-    stroke.Parent = scanBtn
+    -- Status
+    local status = Instance.new("TextLabel")
+    status.Name = "Status"
+    status.Size = UDim2.new(1, -8, 0, 18)
+    status.Position = UDim2.new(0, 4, 0, 30)
+    status.BackgroundTransparency = 1
+    status.TextColor3 = Color3.fromRGB(134, 239, 172)
+    status.Text = "Siap scan..."
+    status.Font = Enum.Font.Gotham
+    status.TextSize = 10
+    status.TextXAlignment = Enum.TextXAlignment.Left
+    status.Parent = frame
 
-    scanBtn.MouseButton1Click:Connect(function()
-        scanBtn.Text = "⏳ SCANNING..."
-        scanAllBooths()
-        task.wait(1.5)
-        scanBtn.Text = "📡 SCAN BOOTHS"
+    -- Tombol scan
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -12, 0, 28)
+    btn.Position = UDim2.new(0, 6, 0, 55)
+    btn.BackgroundColor3 = Color3.fromRGB(79, 70, 229)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Text = "🔍 SCAN SEMUA BOOTH"
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 10
+    btn.Parent = frame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+    btn.MouseButton1Click:Connect(function()
+        if isScanning then return end
+        btn.Text = "⏳ Scanning..."
+        btn.BackgroundColor3 = Color3.fromRGB(37, 99, 235)
+        task.spawn(function()
+            autoScanAllBooths(status)
+            task.wait(0.5)
+            btn.Text = "🔍 SCAN SEMUA BOOTH"
+            btn.BackgroundColor3 = Color3.fromRGB(79, 70, 229)
+        end)
     end)
+
+    return status
 end
 
-createMiniScreenButton()
-notify("⚔️ BB Tracker Ready", "Terhubung ke " .. SERVER_URL)
-scanAllBooths()
+-- ============================================================
+-- AUTO-LOOP (scan ulang tiap SCAN_INTERVAL detik)
+-- ============================================================
+local statusLabel = createGui()
 
-_G.BBTracker = { Scan = scanAllBooths }
-print("✅ SCRIPT BOOTH SCRAPER AKTIF!")
+print("[BB] ✅ BB Auto-Tracker Aktif!")
+notify("⚔️ BB Tracker", "Memulai auto-scan semua booth...")
+
+-- Scan pertama langsung
+task.spawn(function()
+    task.wait(2) -- tunggu karakter ready
+    autoScanAllBooths(statusLabel)
+
+    -- Loop terus-menerus
+    while true do
+        task.wait(SCAN_INTERVAL)
+        if statusLabel then statusLabel.Text = "⏰ Auto-refresh..." end
+        autoScanAllBooths(statusLabel)
+    end
+end)
+
+_G.BBTracker = {
+    Scan = function() task.spawn(function() autoScanAllBooths(statusLabel) end) end,
+    Stop = function() isScanning = false end
+}

@@ -39,9 +39,11 @@ document.addEventListener('DOMContentLoaded', () => {
   initCatalog();
   initRadar();
   fetchMarketStats();
+  checkSolaraStatus();
 
-  // Periodically refresh market stats
+  // Periodically refresh market stats & check Solara connection
   setInterval(fetchMarketStats, 15000);
+  setInterval(checkSolaraStatus, 3000);
 });
 
 // Tab Navigation
@@ -98,11 +100,14 @@ async function fetchMarketStats() {
 }
 
 // ==========================================================================
-// 1. TRADE CALCULATOR CONTROLLER
+// 1. TRADE CALCULATOR & QUICK SWORD INSPECTOR
 // ==========================================================================
+let currentInspectedItem = null;
+
 function initTradeCalculator() {
   setupAutocomplete('my');
   setupAutocomplete('their');
+  initQuickInspector();
 
   document.getElementById('btn-clear-my').addEventListener('click', () => {
     state.myItems = [];
@@ -117,7 +122,342 @@ function initTradeCalculator() {
   });
 }
 
-// Setup Autocomplete for adding items
+// Quick Sword Inspector Controller
+function initQuickInspector() {
+  const searchInput = document.getElementById('inspector-search-input');
+  const searchBtn = document.getElementById('btn-inspector-search');
+  const dropdown = document.getElementById('dropdown-inspector');
+
+  const doInspectorSearch = debounce(async (query) => {
+    if (!query || query.trim().length < 1) {
+      dropdown.style.display = 'none';
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/items?search=${encodeURIComponent(query.trim())}&limit=6`);
+      const data = await res.json();
+
+      if (data.success && data.items.length > 0) {
+        dropdown.innerHTML = data.items.map(item => {
+          const statusUpper = (item.status || 'NORMAL').toUpperCase();
+          let icon = statusUpper === 'NUKED' ? '💥' : (statusUpper === 'BOOSTED' ? '⚡' : (statusUpper === 'PROJECTED' ? '🚨' : '🟢'));
+          return `
+            <div class="dropdown-item" data-name="${item.name}">
+              <div>
+                <div class="d-title">${item.name}</div>
+                <div class="d-meta">${item.category} • ${item.rarity}</div>
+              </div>
+              <div class="d-rap">
+                <span class="status-badge badge-${item.status.toLowerCase()}">${icon} ${item.status}</span>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">
+                  RAP: ${formatNum(item.current_rap)} | Clean: ${formatNum(item.clean_rap)}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        dropdown.style.display = 'block';
+
+        dropdown.querySelectorAll('.dropdown-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const name = el.dataset.name;
+            searchInput.value = name;
+            dropdown.style.display = 'none';
+            inspectSword(name);
+          });
+        });
+      } else {
+        dropdown.innerHTML = `<div style="padding: 12px; text-align: center; color: #64748b; font-size: 0.85rem;">Item tidak ditemukan di katalog</div>`;
+        dropdown.style.display = 'block';
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, 200);
+
+  searchInput.addEventListener('input', (e) => doInspectorSearch(e.target.value));
+
+  searchBtn.addEventListener('click', () => {
+    const q = searchInput.value.trim();
+    if (q) inspectSword(q);
+  });
+
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      dropdown.style.display = 'none';
+      const q = searchInput.value.trim();
+      if (q) inspectSword(q);
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  });
+
+  // Manual update modal wiring
+  const updateModal = document.getElementById('modal-update');
+  const openModalBtn = document.getElementById('btn-open-manual-update');
+  const closeModalBtn = document.getElementById('btn-close-update-modal');
+  const updateForm = document.getElementById('form-update-item');
+
+  if (openModalBtn) {
+    openModalBtn.addEventListener('click', () => {
+      if (currentInspectedItem) {
+        document.getElementById('up-item-name').value = currentInspectedItem.name;
+        document.getElementById('up-current-rap').value = currentInspectedItem.current_rap || '';
+        if (currentInspectedItem.salesHistory && currentInspectedItem.salesHistory.length > 0) {
+          document.getElementById('up-sales-history').value = currentInspectedItem.salesHistory.map(s => s.price).join(', ');
+        }
+      }
+      updateModal.style.display = 'flex';
+    });
+  }
+
+  if (closeModalBtn) {
+    closeModalBtn.addEventListener('click', () => {
+      updateModal.style.display = 'none';
+    });
+  }
+
+  if (updateModal) {
+    updateModal.addEventListener('click', (e) => {
+      if (e.target.id === 'modal-update') updateModal.style.display = 'none';
+    });
+  }
+
+  if (updateForm) {
+    updateForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('up-item-name').value.trim();
+      const rap = parseInt(document.getElementById('up-current-rap').value.trim(), 10);
+      const rawSales = document.getElementById('up-sales-history').value;
+      const sales = rawSales.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+
+      if (!name) return alert('Nama sword wajib diisi!');
+      if (isNaN(rap)) return alert('Nominal RAP wajib diisi angka!');
+
+      const btnSubmit = document.getElementById('btn-submit-update');
+      btnSubmit.disabled = true;
+      btnSubmit.textContent = 'Menyimpan...';
+
+      try {
+        const res = await fetch('/api/update-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            itemName: name,
+            currentRap: rap,
+            salesHistory: sales
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert(`✅ Sukses! ${data.message}`);
+          updateModal.style.display = 'none';
+          searchInput.value = name;
+          inspectSword(name);
+          fetchMarketStats();
+        } else {
+          alert(`❌ Gagal: ${data.error}`);
+        }
+      } catch (err) {
+        alert(`❌ Terjadi error: ${err.message}`);
+      } finally {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = '💾 Simpan & Analisis Manipulasi';
+      }
+    });
+  }
+}
+
+// Check Solara Bridge status in real time
+let isSolaraOnline = false;
+
+async function checkSolaraStatus() {
+  try {
+    const res = await fetch('/api/bridge/status');
+    const json = await res.json();
+    isSolaraOnline = json.connected;
+
+    const dot = document.getElementById('bridge-pulse-dot');
+    const txt = document.getElementById('bridge-status-text');
+
+    if (dot && txt) {
+      if (json.connected) {
+        dot.style.backgroundColor = '#10b981';
+        dot.style.boxShadow = '0 0 8px #10b981';
+        txt.textContent = '🟢 Terhubung di Game';
+        txt.style.color = '#34d399';
+      } else {
+        dot.style.backgroundColor = '#64748b';
+        dot.style.boxShadow = 'none';
+        txt.textContent = '⚪ Belum Jalan';
+        txt.style.color = '#94a3b8';
+      }
+    }
+  } catch (e) {}
+}
+
+// Inspect single sword: sends command to Solara in Blade Ball -> Solara returns live RAP & 5 Sales!
+async function inspectSword(itemName) {
+  const resultCard = document.getElementById('inspector-result-card');
+  resultCard.style.display = 'block';
+
+  if (isSolaraOnline) {
+    resultCard.innerHTML = `
+      <div class="loading-spinner" style="padding: 1.5rem;">
+        <span style="font-size: 1.2rem;">⚡</span> Mengirim perintah ke Solara di Blade Ball...
+        <br><small style="color: #38bdf8;">Menunggu Solara menarik RAP & 5 Sales langsung dari game...</small>
+      </div>
+    `;
+  } else {
+    resultCard.innerHTML = `<div class="loading-spinner" style="padding: 1.5rem;">Mencari data untuk "${itemName}"...</div>`;
+  }
+
+  try {
+    const res = await fetch('/api/bridge/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemName: itemName.trim() })
+    });
+    const data = await res.json();
+
+    if (!data.success || !data.data) {
+      resultCard.innerHTML = `
+        <div style="padding: 1.5rem; text-align: center; color: #94a3b8;">
+          <p style="font-weight: 700; color: #f43f5e; margin-bottom: 0.5rem;">${data.error || `Item "${itemName}" tidak ditemukan.`}</p>
+          <small>Jalankan script <code>solara_bridge.lua</code> di Solara saat berada di game Blade Ball untuk auto-fetch live.</small>
+        </div>
+      `;
+      return;
+    }
+
+    const item = data.data;
+    currentInspectedItem = item;
+
+    const statusUpper = (item.status || 'NORMAL').toUpperCase();
+    let statusIcon = '🟢';
+    let statusBadgeClass = 'badge-normal';
+    let diagBoxClass = '';
+
+    if (statusUpper === 'NUKED') {
+      statusIcon = '💥';
+      statusBadgeClass = 'badge-nuked';
+      diagBoxClass = 'nuked';
+    } else if (statusUpper === 'BOOSTED') {
+      statusIcon = '⚡';
+      statusBadgeClass = 'badge-boosted';
+      diagBoxClass = 'boosted';
+    } else if (statusUpper === 'PROJECTED') {
+      statusIcon = '🚨';
+      statusBadgeClass = 'badge-projected';
+      diagBoxClass = 'projected';
+    }
+
+    const ratio = item.clean_rap > 0 ? (item.current_rap / item.clean_rap).toFixed(2) : '1.00';
+
+    let dataSourcePill = '';
+    if (data.source === 'LIVE_BLADEBALL_SOLARA') {
+      dataSourcePill = `<span style="background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.4); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; margin-left: 8px;">⚡ LIVE DARI GAME (SOLARA)</span>`;
+    } else if (data.source === 'DATABASE_CACHE') {
+      dataSourcePill = `<span style="background: rgba(99,102,241,0.2); color: #818cf8; border: 1px solid rgba(99,102,241,0.4); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; margin-left: 8px;">💾 DATABASE LOKAL</span>`;
+    }
+
+    // 5 Sales Chips
+    let salesChipsHtml = '<div style="color: #64748b; font-size: 0.8rem; padding: 4px 0;">Belum ada 5 transaksi tersimpan.</div>';
+    const salesArr = item.salesHistory || item.recentSales || [];
+    if (salesArr && salesArr.length > 0) {
+      salesChipsHtml = salesArr.slice(0, 5).map((s, idx) => {
+        const p = typeof s === 'object' ? s.price : s;
+        const isOutlier = typeof s === 'object' ? s.is_outlier : false;
+        let chipClass = 'sale-chip';
+        let outlierBadge = '';
+        if (isOutlier) {
+          if (statusUpper === 'NUKED' || p <= 10) {
+            chipClass += ' outlier-nuked';
+            outlierBadge = '<span style="font-size: 0.68rem; font-weight: 800; color: #f59e0b;">💥 OUTLIER (DUMP)</span>';
+          } else {
+            chipClass += ' outlier-projected';
+            outlierBadge = '<span style="font-size: 0.68rem; font-weight: 800; color: #f43f5e;">⚡ OUTLIER (PUMP)</span>';
+          }
+        }
+        return `
+          <div class="${chipClass}">
+            <span class="chip-idx">#${idx + 1}</span>
+            <span><strong>${formatNum(p)}</strong></span>
+            ${outlierBadge}
+          </div>
+        `;
+      }).join('');
+    }
+
+    resultCard.innerHTML = `
+      <div class="res-card-top">
+        <div>
+          <div class="res-meta-line">${item.category} • ${item.rarity} ${dataSourcePill}</div>
+          <h2 class="res-name">${item.name}</h2>
+        </div>
+        <div class="res-status-wrap">
+          <span class="status-badge ${statusBadgeClass}" style="font-size: 0.85rem; padding: 4px 10px;">
+            ${statusIcon} ${item.status}
+          </span>
+        </div>
+      </div>
+
+      <div class="res-rap-grid">
+        <div class="res-rap-box clean">
+          <span class="res-box-label">Clean RAP (Nilai Riil Bersih):</span>
+          <span class="res-box-val highlight-cyan">${formatNum(item.clean_rap)}</span>
+          <small class="res-box-sub">Bebas dari transaksi palsu / dump</small>
+        </div>
+        <div class="res-rap-box official">
+          <span class="res-box-label">Official RAP (Nominal Game):</span>
+          <span class="res-box-val">${formatNum(item.current_rap)}</span>
+          <small class="res-box-sub">Rasio Game/Clean: <strong>${ratio}x</strong></small>
+        </div>
+      </div>
+
+      <div class="res-sales-section">
+        <div class="res-sales-header">
+          <span class="res-sales-title">📊 5 Riwayat Transaksi Terakhir (Sales History):</span>
+          <span class="res-sales-hint">Deteksi transaksi dump 1 token atau pump buatan</span>
+        </div>
+        <div class="res-sales-chips">
+          ${salesChipsHtml}
+        </div>
+      </div>
+
+      <div class="res-diagnosis-box ${diagBoxClass}">
+        <div class="diag-title">💡 Diagnosis Manipulasi:</div>
+        <div class="diag-desc">${item.status_reason || 'Harga stabil tanpa indikasi transaksi abnormal.'}</div>
+        <div style="font-size: 0.8rem; color: #a5b4fc; margin-top: 4px;">
+          <strong>Rekomendasi Trade:</strong> ${item.tradeRecommendation || 'Aman ditrade.'}
+        </div>
+      </div>
+
+      <div class="res-actions-bar">
+        <button class="btn-add-trade my" id="btn-inspect-add-my">+ Tambah ke Sisi Anda</button>
+        <button class="btn-add-trade their" id="btn-inspect-add-their">+ Tambah ke Sisi Lawan</button>
+      </div>
+    `;
+
+    document.getElementById('btn-inspect-add-my')?.addEventListener('click', () => {
+      addItemToTrade('my', item);
+    });
+    document.getElementById('btn-inspect-add-their')?.addEventListener('click', () => {
+      addItemToTrade('their', item);
+    });
+
+  } catch (err) {
+    resultCard.innerHTML = `<div style="padding: 1.5rem; text-align: center; color: #f43f5e;">Gagal menghubungi server bridge: ${err.message}</div>`;
+  }
+}
+
+// Setup Autocomplete for adding items into trade sides
 function setupAutocomplete(side) {
   const input = document.getElementById(`input-search-${side}`);
   const dropdown = document.getElementById(`dropdown-${side}`);
@@ -133,20 +473,24 @@ function setupAutocomplete(side) {
       const data = await res.json();
 
       if (data.success && data.items.length > 0) {
-        dropdown.innerHTML = data.items.map(item => `
-          <div class="dropdown-item" data-name="${item.name}">
-            <div>
-              <div class="d-title">${item.name}</div>
-              <div class="d-meta">${item.category} • ${item.rarity}</div>
-            </div>
-            <div class="d-rap">
-              <span class="status-badge badge-${item.status.toLowerCase()}">${item.status}</span>
-              <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">
-                Clean: ${formatNum(item.clean_rap)}
+        dropdown.innerHTML = data.items.map(item => {
+          const statusUpper = (item.status || 'NORMAL').toUpperCase();
+          let icon = statusUpper === 'NUKED' ? '💥' : (statusUpper === 'BOOSTED' ? '⚡' : (statusUpper === 'PROJECTED' ? '🚨' : '🟢'));
+          return `
+            <div class="dropdown-item" data-name="${item.name}">
+              <div>
+                <div class="d-title">${item.name}</div>
+                <div class="d-meta">${item.category} • ${item.rarity}</div>
+              </div>
+              <div class="d-rap">
+                <span class="status-badge badge-${item.status.toLowerCase()}">${icon} ${item.status}</span>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">
+                  RAP: ${formatNum(item.current_rap)} | Clean: ${formatNum(item.clean_rap)}
+                </div>
               </div>
             </div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
 
         dropdown.style.display = 'block';
 
@@ -172,7 +516,6 @@ function setupAutocomplete(side) {
 
   input.addEventListener('input', (e) => doSearch(e.target.value));
 
-  // Close dropdown on outside click
   document.addEventListener('click', (e) => {
     if (!input.contains(e.target) && !dropdown.contains(e.target)) {
       dropdown.style.display = 'none';
@@ -181,23 +524,43 @@ function setupAutocomplete(side) {
 }
 
 // Add Item to a Trade Side
-function addItemToTrade(side, item) {
+async function addItemToTrade(side, item) {
   const list = side === 'my' ? state.myItems : state.theirItems;
   const existing = list.find(i => i.name.toLowerCase() === item.name.toLowerCase());
 
   if (existing) {
     existing.count += 1;
-  } else {
-    list.push({
-      name: item.name,
-      category: item.category,
-      rarity: item.rarity,
-      cleanRap: item.clean_rap,
-      currentRap: item.current_rap,
-      status: item.status,
-      count: 1
-    });
+    renderTradeList(side);
+    evaluateTrade();
+    return;
   }
+
+  let fullItem = item;
+  if (!item.recentSales && !item.salesHistory) {
+    try {
+      const res = await fetch(`/api/items/${encodeURIComponent(item.name)}`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        fullItem = data.data;
+      }
+    } catch (e) {
+      console.warn('Could not fetch full details for', item.name);
+    }
+  }
+
+  const sales = fullItem.recentSales || fullItem.salesHistory || [];
+
+  list.push({
+    name: fullItem.name,
+    category: fullItem.category || 'Sword',
+    rarity: fullItem.rarity || 'Common',
+    cleanRap: fullItem.clean_rap !== undefined ? fullItem.clean_rap : fullItem.cleanRap,
+    currentRap: fullItem.current_rap !== undefined ? fullItem.current_rap : fullItem.currentRap,
+    status: fullItem.status || 'NORMAL',
+    statusReason: fullItem.status_reason || fullItem.statusReason || '',
+    recentSales: sales.slice(0, 5),
+    count: 1
+  });
 
   renderTradeList(side);
   evaluateTrade();
@@ -212,7 +575,7 @@ function renderTradeList(side) {
     container.innerHTML = `
       <div class="empty-state">
         <p>Belum ada item ditambahkan</p>
-        <small>${side === 'my' ? 'Gunakan bilah cari di atas untuk memilih pedang Anda' : 'Cari item tawaran lawan untuk mengecek status projected'}</small>
+        <small>${side === 'my' ? 'Gunakan bilah cari di atas untuk memilih pedang Anda' : 'Cari item tawaran lawan untuk mengecek status projected/nuked/boosted'}</small>
       </div>
     `;
     updateTotals(side, 0, 0);
@@ -223,21 +586,67 @@ function renderTradeList(side) {
   let totalOff = 0;
 
   container.innerHTML = list.map((item, index) => {
-    const subClean = item.cleanRap * item.count;
-    const subOff = item.currentRap * item.count;
+    const subClean = (item.cleanRap || 0) * item.count;
+    const subOff = (item.currentRap || 0) * item.count;
     totalClean += subClean;
     totalOff += subOff;
+
+    const statusUpper = (item.status || 'NORMAL').toUpperCase();
+    let statusIcon = '🟢';
+    let statusBadgeClass = 'badge-normal';
+    if (statusUpper === 'NUKED') {
+      statusIcon = '💥';
+      statusBadgeClass = 'badge-nuked';
+    } else if (statusUpper === 'BOOSTED') {
+      statusIcon = '⚡';
+      statusBadgeClass = 'badge-boosted';
+    } else if (statusUpper === 'PROJECTED') {
+      statusIcon = '🚨';
+      statusBadgeClass = 'badge-projected';
+    }
+
+    // Render 5 sales pills
+    let salesPillsHtml = '';
+    if (item.recentSales && item.recentSales.length > 0) {
+      const pills = item.recentSales.map(s => {
+        const price = typeof s === 'object' ? s.price : s;
+        const isOutlier = typeof s === 'object' ? s.is_outlier : false;
+        let pillClass = 'mini-sale-pill';
+        let outlierTag = '';
+        if (isOutlier) {
+          if (statusUpper === 'NUKED' || price <= 10) {
+            pillClass += ' outlier-nuked';
+            outlierTag = ' 💥';
+          } else {
+            pillClass += ' outlier';
+            outlierTag = ' ⚡';
+          }
+        }
+        return `<span class="${pillClass}" title="${isOutlier ? 'Outlier / Manipulasi' : 'Normal'}">${formatNum(price)}${outlierTag}</span>`;
+      }).join('');
+
+      salesPillsHtml = `
+        <div class="trade-sales-row">
+          <span class="trade-sales-label">5 Sales:</span>
+          ${pills}
+        </div>
+      `;
+    }
+
+    const diagnosisHtml = item.statusReason ? `<div class="trade-item-diagnosis">${item.statusReason}</div>` : '';
 
     return `
       <div class="trade-item-row">
         <div class="trade-item-info">
           <div class="item-name-tag">
             <span>${item.name}</span>
-            <span class="status-badge badge-${item.status.toLowerCase()}">${item.status}</span>
+            <span class="status-badge ${statusBadgeClass}">${statusIcon} ${item.status}</span>
           </div>
           <div class="item-rap-details">
             Clean: <strong>${formatNum(item.cleanRap)}</strong> | RAP: ${formatNum(item.currentRap)}
           </div>
+          ${salesPillsHtml}
+          ${diagnosisHtml}
         </div>
         <div class="trade-item-actions">
           <div class="qty-control">
@@ -668,7 +1077,8 @@ window.openItemDetail = async function(itemName) {
 // 3. RADAR BOOTH & DEALS CONTROLLER
 // ==========================================================================
 function initRadar() {
-  document.getElementById('btn-refresh-booths').addEventListener('click', loadBoothDeals);
+  const btn = document.getElementById('btn-refresh-booths');
+  if (btn) btn.addEventListener('click', loadBoothDeals);
 }
 
 async function loadBoothDeals() {
