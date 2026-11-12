@@ -177,34 +177,40 @@ function Util.SyncBbValues()
                         local val = (it.p and tonumber(it.p) > 0) and tonumber(it.p) or (tonumber(it.a) or 0)
                         if it.n and val > 0 then
                             local rawName = tostring(it.n)
-                            local cat = tostring(it.c or "Sword")
-                            local catLower = cat:lower()
-
-                            -- Normalisasi baseName (misal: "Crimson Kagune Explosion" -> "Crimson Kagune")
-                            local baseName = rawName:gsub("%s+[Ee]xplosion$", ""):gsub("%s+[Ee]mote$", ""):gsub("%s+[Ss]word$", "")
-                            local nameVariants = { rawName }
-                            if baseName ~= rawName and #baseName > 2 then
-                                table.insert(nameVariants, baseName)
+                            local baseCat = tostring(it.c or "Sword")
+                            local cat = baseCat
+                            if it.tg and type(it.tg) == "string" and #it.tg > 0 then
+                                cat = baseCat .. " (" .. it.tg .. ")"
                             end
+                            local catLower = baseCat:lower()
 
-                            for _, nv in ipairs(nameVariants) do
-                                local kSpaced = nv:lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
-                                local kClean = nv:lower():gsub("%s+", "")
+                            local kSpaced = rawName:lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+                            local kClean = rawName:lower():gsub("%s+", "")
 
-                                for _, k in ipairs({ kSpaced, kClean }) do
-                                    -- Key spesifik kategori
-                                    RAP_DATABASE[k .. "#" .. catLower] = val
+                            for _, k in ipairs({ kSpaced, kClean }) do
+                                -- Key spesifik kategori dasar
+                                RAP_DATABASE[k .. "#" .. catLower] = val
 
-                                    -- Simpan dalam struktur tabel multi-kategori
-                                    if type(RAP_DATABASE[k]) ~= "table" then
-                                        local oldVal = tonumber(RAP_DATABASE[k])
-                                        RAP_DATABASE[k] = {}
-                                        if oldVal and oldVal > 0 then
-                                            RAP_DATABASE[k]["Sword"] = oldVal
-                                        end
+                                -- Simpan dalam struktur tabel multi-kategori
+                                if type(RAP_DATABASE[k]) ~= "table" then
+                                    local oldVal = tonumber(RAP_DATABASE[k])
+                                    RAP_DATABASE[k] = {}
+                                    if oldVal and oldVal > 0 then
+                                        RAP_DATABASE[k]["Sword"] = oldVal
                                     end
-                                    RAP_DATABASE[k][cat] = val
                                 end
+
+                                -- Hindari overwrite jika ada varian berbeda tanpa tag
+                                local variantKey = cat
+                                if RAP_DATABASE[k][variantKey] and RAP_DATABASE[k][variantKey] ~= val then
+                                    local c = 2
+                                    while RAP_DATABASE[k][variantKey .. " #" .. c] do
+                                        c = c + 1
+                                    end
+                                    variantKey = variantKey .. " #" .. c
+                                end
+
+                                RAP_DATABASE[k][variantKey] = val
                             end
                             count = count + 1
                         end
