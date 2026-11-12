@@ -587,15 +587,6 @@ function PlazaEngine.GetRapValue(itemName, category, price)
 
     -- JIKA ITEM MEMILIKI MULTI-KATEGORI (Tabel { Sword = ..., Explosion = ..., Emote = ... })
     if type(entry) == "table" then
-        -- A. Jika kategori sudah terverifikasi dari Frame/Viewport di booth (bukan "unknown")
-        if catLower ~= "unknown" then
-            for cName, cVal in pairs(entry) do
-                if tostring(cName):lower() == catLower and tonumber(cVal) and tonumber(cVal) > 0 then
-                    return tonumber(cVal), tostring(cName)
-                end
-            end
-        end
-
         local variants = {}
         for cName, cVal in pairs(entry) do
             local num = tonumber(cVal) or 0
@@ -605,22 +596,38 @@ function PlazaEngine.GetRapValue(itemName, category, price)
         end
 
         if #variants > 0 then
-            -- Urutkan dari nilai terendah ke nilai tertinggi
-            table.sort(variants, function(a, b) return a.val < b.val end)
+            -- Saring varian jika kategori spesifik (Emote vs Sword vs Explosion) sudah terdeteksi di booth
+            local candidates = {}
+            if catLower ~= "unknown" then
+                for _, v in ipairs(variants) do
+                    if v.type:lower():find(catLower) then
+                        table.insert(candidates, v)
+                    end
+                end
+            end
+            if #candidates == 0 then
+                candidates = variants
+            end
 
-            -- [LOGIKA HARGA TERDEKAT / NEAREST ABSOLUTE VALUE]:
-            -- Cocokkan harga booth ke varian yang selisih jarak nilainya paling dekat!
-            -- Contoh kasus: Sea Turtle (Emote 928 vs Sword 10.821).
-            -- Jika dijual 1.222:
-            --   Jarak ke 928 = |1222 - 928| = 294
-            --   Jarak ke 10821 = |1222 - 10821| = 9599
-            -- Maka otomatis dipilih Emote (928).
-            -- Karena 1222 > 928 (rugi -294), maka deal ini langsung diabaikan!
-            local chosen = variants[1]
+            -- [LOGIKA HARGA TERDEKAT / NEAREST ABSOLUTE VALUE UNTUK SEMUA ITEM]:
+            -- Bandingkan harga booth ke semua nilai di website, dan pilih yang SELISIHNYA PALING KECIL!
+            -- Contoh Kasus:
+            -- 1. Reindeer: Value 38.498 vs 55.929.
+            --    Harga Booth: 39.500
+            --    Selisih ke 38.498 = |39.500 - 38.498| = 1.002
+            --    Selisih ke 55.929 = |39.500 - 55.929| = 16.429
+            --    => Otomatis pilih 38.498 (selisih 1.002).
+            --    Karena 39.500 > 38.498 (rugi -1.002), deal otomatis dibuang dan TIDAK dikirim!
+            -- 2. Sea Turtle: Value 928 vs 10.821 (Explosion terpisah: 1.533).
+            --    Harga Booth: 1.222 => Selisih ke 928 = 294 => Pilih 928 => Dibuang.
+            -- 3. Event Horizon: Value 7 vs 591.
+            --    Harga Booth: 8 => Selisih ke 7 = 1 => Pilih 7 => Dibuang.
+            table.sort(candidates, function(a, b) return a.val < b.val end)
+            local chosen = candidates[1]
             local minDiff = math.huge
 
             if price > 0 then
-                for _, v in ipairs(variants) do
+                for _, v in ipairs(candidates) do
                     local diff = math.abs(price - v.val)
                     if diff < minDiff then
                         minDiff = diff

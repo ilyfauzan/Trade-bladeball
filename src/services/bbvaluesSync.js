@@ -44,11 +44,17 @@ async function sync() {
     console.log(`[BBValues Sync] Berhasil download online: ${items.length} item.`);
   } catch (netErr) {
     console.warn('[BBValues Sync] Gagal download online:', netErr.message);
-    const localScratch = path.join(__dirname, '..', '..', 'scratch_bbv_items.json');
+    const localScratch = path.join(__dirname, '..', '..', 'scratch_bbv_all.json');
+    const oldScratch = path.join(__dirname, '..', '..', 'scratch_bbv_items.json');
     if (fs.existsSync(localScratch)) {
       try {
         items = JSON.parse(fs.readFileSync(localScratch, 'utf8'));
         console.log(`[BBValues Sync] Membaca dari cache lokal: ${items.length} item.`);
+      } catch (_) {}
+    } else if (fs.existsSync(oldScratch)) {
+      try {
+        items = JSON.parse(fs.readFileSync(oldScratch, 'utf8'));
+        console.log(`[BBValues Sync] Membaca dari cache lokal lama: ${items.length} item.`);
       } catch (_) {}
     }
   }
@@ -72,7 +78,19 @@ async function sync() {
     const category = (item.c || 'Sword').trim();
 
     if (!catMap[cleanKey]) catMap[cleanKey] = {};
-    catMap[cleanKey][category] = value;
+
+    let variantName = category;
+    if (item.tg && typeof item.tg === 'string' && item.tg.trim().length > 0) {
+      variantName = `${category} (${item.tg.trim()})`;
+    } else if (catMap[cleanKey][variantName] && catMap[cleanKey][variantName] !== value) {
+      let counter = 2;
+      while (catMap[cleanKey][`${variantName} #${counter}`]) {
+        counter++;
+      }
+      variantName = `${variantName} #${counter}`;
+    }
+
+    catMap[cleanKey][variantName] = value;
   }
 
   const rapDatabase = {};
