@@ -368,23 +368,55 @@ function Navigator.ServerHop(minPlayers, maxPlayers)
 
     local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
     if req then
+        -- Riwayat server yang sudah dikunjungi (biar server selalu ganti & tidak balik ke server lama)
+        local visited = {}
+        pcall(function()
+            if isfile and readfile and isfile("bb_visited_servers.json") then
+                local raw = readfile("bb_visited_servers.json")
+                if raw and #raw > 5 then
+                    local parsed = HttpService:JSONDecode(raw)
+                    local now = os.time()
+                    for sId, t in pairs(parsed) do
+                        if (now - (tonumber(t) or 0)) < 1800 then -- bersihkan cache di atas 30 menit
+                            visited[sId] = t
+                        end
+                    end
+                end
+            end
+        end)
+        visited[JobId] = os.time()
+
         local url = string.format("https://games.roblox.com/v1/games/%s/servers/Public?sortOrder=Desc&limit=100", tostring(PlaceId))
         local ok, res = pcall(function() return req({ Url = url, Method = "GET" }) end)
         if ok and res and res.StatusCode == 200 then
             local data = HttpService:JSONDecode(res.Body)
             if data and data.data then
                 local candidates = {}
+                local fallbackCandidates = {}
+
                 for _, s in ipairs(data.data) do
                     if type(s) == "table" and s.id ~= JobId and s.playing and s.maxPlayers then
                         local p = tonumber(s.playing) or 0
                         local m = tonumber(s.maxPlayers) or 30
                         if (m - p >= 2) and (p >= minPlayers and p <= maxPlayers) then
-                            table.insert(candidates, s.id)
+                            table.insert(fallbackCandidates, s.id)
+                            if not visited[s.id] then
+                                table.insert(candidates, s.id)
+                            end
                         end
                     end
                 end
-                if #candidates > 0 then
-                    local targetServer = candidates[math.random(1, #candidates)]
+
+                local targetList = (#candidates > 0) and candidates or fallbackCandidates
+                if #targetList > 0 then
+                    local targetServer = targetList[math.random(1, #targetList)]
+                    visited[targetServer] = os.time()
+                    pcall(function()
+                        if writefile then
+                            writefile("bb_visited_servers.json", HttpService:JSONEncode(visited))
+                        end
+                    end)
+
                     TeleportService:TeleportToPlaceInstance(PlaceId, targetServer, LocalPlayer)
                     return
                 end
@@ -428,7 +460,7 @@ function PlazaEngine.IsQualifiedDeal(rap, price, itemName, category)
     end
 
     -- [B] Item High-Tier 10k - 20k: Tampilkan juga walaupun TIDAK under RAP!
-    -- Kriteria: Value (RAP) berada di 10.000 s/d 20.000, harga booth tidak melebihi batas 22.000
+    -- Kriteria: Value (RAP) berada di rentang 10.000 s/d 20.000, harga booth tidak melebihi batas 22.000
     if rap and rap >= 10000 and rap <= 20000 then
         if price <= 22000 then
             local highRule = {
