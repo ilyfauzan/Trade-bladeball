@@ -27,6 +27,28 @@ local JobId = game.JobId
 -- Discord Webhook untuk notifikasi hasil scan Under-RAP
 local DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1570338415722102866/0Hpi4LO0C-ZLvovBhsGG96Tb-td2nlrLQZGXor1J8pffFKJXzPqkVxxD91aC5eE0pf3d"
 
+-- ==============================================================================
+-- [SPECIAL HIGH-DEMAND WATCHLIST / OVER-RAP BUY DEALS]
+-- Item tertentu yang permintaannya sangat tinggi (hype/liquid) sehingga tetap
+-- SANGAT WORTH IT DIBELI meskipun harganya sedikit di atas RAP resmi bbvalues.
+-- Format:
+--   ["nama item"] = { MaxPrice = batas_beli_max, ResellTarget = target_jual, Category = "Sword", Reason = "alasan" }
+-- Anda bisa bebas menambahkan item lain ke tabel ini kapan saja!
+-- ==============================================================================
+local SPECIAL_WATCHLIST = {
+    ["rose gift"] = {
+        MaxPrice = 11500,     -- Tampilkan jika harga <= 11.500 (kisaran 11k - 11.5k)
+        ResellTarget = 12500, -- Estimasi nilai jual pasar riil
+        Reason = "🌹 High-Demand Rose Gift (Worth It Di Atas RAP)"
+    },
+    ["chroma blade"] = {
+        MaxPrice = 15000,     -- Tampilkan jika harga <= 15.000 (kisaran 13k - 15k)
+        ResellTarget = 16500, -- Estimasi nilai jual pasar riil
+        Category = "Sword",   -- Wajib jenis Sword (bukan emote/explo)
+        Reason = "🌈 Hype High-Tier Chroma Blade (Worth It s/d 15k)"
+    }
+}
+
 -- [2] DATABASE NILAI RAP BASELINE (PEDANG & EXPLOSION POPULER)
 local RAP_DATABASE = {
     ["wavelight"] = 360,
@@ -244,12 +266,15 @@ function Util.SendDiscordAlert(deals)
                     or (cat == "Explosion" and "💥 [EXPLOSION]") 
                     or string.format("📦 [%s]", cat)
 
-                -- Warna embed: Gold untuk profit >= 1000, Hijau Emerald untuk profit standar
-                local embedColor = (d.Profit >= 1000) and 16098851 or 1095937
+                -- Warna embed: Ungu Diamond untuk Special Watchlist, Gold untuk profit >= 1000, Hijau untuk normal
+                local embedColor = d.IsSpecial and 10181046 or ((d.Profit >= 1000) and 16098851 or 1095937)
+                local embedTitle = d.IsSpecial and string.format("💎 [SPECIAL HIGH-DEMAND DEAL] %s", d.Name) or string.format("%s %s", catIcon, d.Name)
+                local embedDesc = d.IsSpecial and string.format("✨ **%s**\nItem ini sangat likuid/hype dan worth it dibeli meski di atas RAP resmi!\nTarget Resell: **%s tokens**", d.SpecialReason or "Hype Item", Util.FormatNumber(d.EffectiveRAP or d.RAP))
+                    or string.format("🔥 **Terdeteksi UNDER RAP di Trade Plaza!**\nDiskon: **-%d%% OFF** • Estimasi Cuan: **+%s tokens**", d.Discount, Util.FormatNumber(d.Profit))
 
                 local embed = {
-                    title = string.format("%s %s", catIcon, d.Name),
-                    description = string.format("🔥 **Terdeteksi UNDER RAP di Trade Plaza!**\nDiskon: **-%d%% OFF** • Estimasi Cuan: **+%s tokens**", d.Discount, Util.FormatNumber(d.Profit)),
+                    title = embedTitle,
+                    description = embedDesc,
                     color = embedColor,
                     fields = {
                         {
@@ -380,28 +405,48 @@ local PlazaEngine = {
     RemainingHopSeconds = 300
 }
 
-function PlazaEngine.IsQualifiedDeal(rap, price)
-    if not rap or rap <= 0 or not price or price <= 0 then return false end
+function PlazaEngine.IsQualifiedDeal(rap, price, itemName, category)
+    if not price or price <= 0 then return false, false, nil end
+
+    -- [A] CEK SPECIAL WATCHLIST (Pengecualian Over-RAP untuk Item Hype / High-Demand)
+    local kSpaced = tostring(itemName or ""):lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+    local kClean = tostring(itemName or ""):lower():gsub("%s+", "")
+    local special = SPECIAL_WATCHLIST[kSpaced] or SPECIAL_WATCHLIST[kClean]
+
+    if special then
+        local catOk = true
+        if special.Category and category then
+            if tostring(category):lower() ~= tostring(special.Category):lower() then
+                catOk = false
+            end
+        end
+
+        if catOk and price <= special.MaxPrice then
+            return true, true, special -- isQualified, isSpecial, specialRule
+        end
+    end
+
+    -- [B] Kriteria Standar Under-RAP
+    if not rap or rap <= 0 then return false, false, nil end
     local profit = rap - price
-    if profit <= 0 then return false end
+    if profit <= 0 then return false, false, nil end
 
     -- [Kriteria 1]: Item Value 400 - 1500 -> Tampilkan jika under 100 keatas (profit >= 100)
     if rap >= 400 and rap <= 1500 then
-        return profit >= 100
+        return (profit >= 100), false, nil
     end
 
     -- [Kriteria 2]: Item Value 1600 - 5000 -> Tampilkan jika under 200 keatas (profit >= 200)
     if rap > 1500 and rap <= 5000 then
-        return profit >= 200
+        return (profit >= 200), false, nil
     end
 
     -- [Kriteria 3]: Item Value > 5000 (High-Tier) -> Tampilkan jika under 200 keatas
     if rap > 5000 then
-        return profit >= 200
+        return (profit >= 200), false, nil
     end
 
-    -- Item value < 400 diabaikan agar radar bebas dari spam item receh
-    return false
+    return false, false, nil
 end
 
 function PlazaEngine.DetectCategory(frame, itemName)
@@ -707,16 +752,32 @@ function PlazaEngine.ScanAllBooths(statusCallback)
                                 local category = resolvedCategory or detectedCategory
                                 local profit = (rap > 0) and (rap - price) or 0
                                 local discountPct = (rap > 0) and math.floor(((rap - price) / rap) * 100) or 0
-                                local isQualified = PlazaEngine.IsQualifiedDeal(rap, price)
+                                local isQualified, isSpecial, sRule = PlazaEngine.IsQualifiedDeal(rap, price, itemName, category)
+
+                                local effectiveRap = rap
+                                local specialReason = nil
+                                if isSpecial and sRule then
+                                    specialReason = sRule.Reason
+                                    if sRule.ResellTarget and sRule.ResellTarget > price then
+                                        profit = sRule.ResellTarget - price
+                                        effectiveRap = sRule.ResellTarget
+                                        discountPct = math.floor(((sRule.ResellTarget - price) / sRule.ResellTarget) * 100)
+                                    else
+                                        profit = (rap > price) and (rap - price) or 0
+                                    end
+                                end
 
                                 local listing = {
                                     Name = itemName,
                                     Category = category,
                                     Price = price,
                                     RAP = rap,
+                                    EffectiveRAP = effectiveRap,
                                     Profit = profit,
                                     Discount = discountPct,
                                     IsUnderRap = isQualified,
+                                    IsSpecial = isSpecial,
+                                    SpecialReason = specialReason,
                                     Seller = sellerName,
                                     Stand = stand
                                 }
@@ -985,9 +1046,9 @@ function UI.Build()
             local tag = Instance.new("TextLabel")
             tag.Size = UDim2.new(0, 80, 0, 18)
             tag.Position = UDim2.new(1, -86, 0, 4)
-            tag.BackgroundColor3 = Color3.fromRGB(5, 150, 105)
+            tag.BackgroundColor3 = d.IsSpecial and Color3.fromRGB(147, 51, 234) or Color3.fromRGB(5, 150, 105)
             tag.TextColor3 = Color3.fromRGB(255, 255, 255)
-            tag.Text = string.format("🔥 -%d%% OFF", d.Discount)
+            tag.Text = d.IsSpecial and "💎 WORTH IT" or string.format("🔥 -%d%% OFF", d.Discount)
             tag.Font = Enum.Font.GothamBold
             tag.TextSize = 9
             tag.Parent = card
