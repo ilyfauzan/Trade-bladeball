@@ -143,20 +143,34 @@ function Util.SyncBbValues()
                     for _, it in ipairs(items) do
                         local val = (it.p and tonumber(it.p) > 0) and tonumber(it.p) or (tonumber(it.a) or 0)
                         if it.n and val > 0 then
-                            local cleanKey = tostring(it.n):lower():gsub("%s+", "")
-                            local cat = tostring(it.c or "Sword"):lower()
-                            
-                            -- Simpan key spesifik kategori (misal: "higanbanakatana#sword", "higanbanakatana#emote")
-                            RAP_DATABASE[cleanKey .. "#" .. cat] = val
-                            
-                            -- Simpan juga pada generic key
-                            if not RAP_DATABASE[cleanKey] then
-                                RAP_DATABASE[cleanKey] = val
-                            elseif type(RAP_DATABASE[cleanKey]) == "number" then
-                                -- Jika ambigu (ada 2 item dengan nama sama beda kategori):
-                                -- AMBIL NILAI PALING RENDAH sebagai failsafe agar tidak false positive!
-                                if val < RAP_DATABASE[cleanKey] then
-                                    RAP_DATABASE[cleanKey] = val
+                            local rawName = tostring(it.n)
+                            local cat = tostring(it.c or "Sword")
+                            local catLower = cat:lower()
+
+                            -- Normalisasi baseName (misal: "Crimson Kagune Explosion" -> "Crimson Kagune")
+                            local baseName = rawName:gsub("%s+[Ee]xplosion$", ""):gsub("%s+[Ee]mote$", ""):gsub("%s+[Ss]word$", "")
+                            local nameVariants = { rawName }
+                            if baseName ~= rawName and #baseName > 2 then
+                                table.insert(nameVariants, baseName)
+                            end
+
+                            for _, nv in ipairs(nameVariants) do
+                                local kSpaced = nv:lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+                                local kClean = nv:lower():gsub("%s+", "")
+
+                                for _, k in ipairs({ kSpaced, kClean }) do
+                                    -- Key spesifik kategori
+                                    RAP_DATABASE[k .. "#" .. catLower] = val
+
+                                    -- Simpan dalam struktur tabel multi-kategori
+                                    if type(RAP_DATABASE[k]) ~= "table" then
+                                        local oldVal = tonumber(RAP_DATABASE[k])
+                                        RAP_DATABASE[k] = {}
+                                        if oldVal and oldVal > 0 then
+                                            RAP_DATABASE[k]["Sword"] = oldVal
+                                        end
+                                    end
+                                    RAP_DATABASE[k][cat] = val
                                 end
                             end
                             count = count + 1
@@ -178,11 +192,17 @@ function Util.SyncBbValues()
                 if type(parsed) == "table" then
                     local count = 0
                     for k, v in pairs(parsed) do
-                        local cleanKey = tostring(k):lower():gsub("%s+", "")
-                        if type(v) == "table" then
-                            RAP_DATABASE[cleanKey] = v
-                        else
-                            RAP_DATABASE[cleanKey] = tonumber(v) or 0
+                        local kSpaced = tostring(k):lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+                        local kClean = tostring(k):lower():gsub("%s+", "")
+                        for _, key in ipairs({ kSpaced, kClean }) do
+                            if type(v) == "table" then
+                                RAP_DATABASE[key] = v
+                            else
+                                local num = tonumber(v) or 0
+                                if num > 0 then
+                                    RAP_DATABASE[key] = num
+                                end
+                            end
                         end
                         count = count + 1
                     end
@@ -363,20 +383,60 @@ function PlazaEngine.IsQualifiedDeal(rap, price)
 end
 
 function PlazaEngine.DetectCategory(frame, itemName)
-    -- 0. Cek nama item langsung
-    local lowerName = tostring(itemName or ""):lower()
+    local lowerName = tostring(itemName or ""):lower():match("^%s*(.-)%s*$")
+    local cleanName = lowerName:gsub("%s+", "")
+
+    -- 1. CEK SUFFIX NAMA LANGSUNG (Jika nama item eksplisit di booth)
     if lowerName:find("explosion") or lowerName:find("blast") or lowerName:find("detonation") or lowerName:find("burst") or lowerName:find("nova") or lowerName:find("drop") then
         return "Explosion"
     end
     if lowerName:find("emote") or lowerName:find("dance") or lowerName:find("giggle") or lowerName:find("sit") or lowerName:find("pose") then
         return "Emote"
     end
-    if lowerName:find("blade") or lowerName:find("sword") or lowerName:find("katana") or lowerName:find("scythe") or lowerName:find("spear") or lowerName:find("dagger") or lowerName:find("axe") or lowerName:find("rapier") or lowerName:find("hammer") or lowerName:find("bat") or lowerName:find("staff") or lowerName:find("greatblade") or lowerName:find("thorn") or lowerName:find("wrath") or lowerName:find("tanto") or lowerName:find("bow") or lowerName:find("slicer") or lowerName:find("fang") or lowerName:find("cutter") or lowerName:find("cleaver") then
-        return "Sword"
-    end
 
+    -- 2. CEK VIEWPORTFRAME (Model 3D Item di Booth)
+    -- Ini SANGAT KRUSIAL untuk item set dengan nama sama persis (misal: "Higanbana Katana" atau "Crimson Kagune")
     if frame then
-        -- 1. Cek Attributes pada frame atau itemBtn
+        local vp = frame:FindFirstChildWhichIsA("ViewportFrame", true)
+        if vp then
+            -- [EMOTE DETECTION]:
+            -- Emote di Blade Ball SELALU menggunakan model dummy karakter Roblox (Humanoid / Body parts)
+            local hasHumanoid = vp:FindFirstChildWhichIsA("Humanoid", true) 
+                or vp:FindFirstChild("HumanoidRootPart", true)
+                or vp:FindFirstChild("Head", true)
+                or vp:FindFirstChild("UpperTorso", true)
+                or vp:FindFirstChild("Torso", true)
+                or vp:FindFirstChild("LowerTorso", true)
+            if hasHumanoid then
+                return "Emote"
+            end
+
+            -- [EXPLOSION DETECTION]:
+            -- Explosion memiliki efek partikel (ParticleEmitter, Beam, Trail) atau nama objek bertema ledakan
+            local hasParticles = vp:FindFirstChildWhichIsA("ParticleEmitter", true)
+                or vp:FindFirstChildWhichIsA("Beam", true)
+                or vp:FindFirstChildWhichIsA("Trail", true)
+            if hasParticles then
+                return "Explosion"
+            end
+
+            for _, obj in ipairs(vp:GetDescendants()) do
+                local on = obj.Name:lower()
+                if on:find("explosion") or on:find("vfx") or on:find("effect") or on:find("burst") or on:find("sphere") or on:find("ball") then
+                    return "Explosion"
+                end
+            end
+
+            -- [SWORD DETECTION via ViewportFrame]:
+            for _, obj in ipairs(vp:GetDescendants()) do
+                local on = obj.Name:lower()
+                if on:find("sword") or on:find("katana") or on:find("blade") or on:find("scythe") or on:find("handle") or on:find("weapon") then
+                    return "Sword"
+                end
+            end
+        end
+
+        -- 3. CEK ATTRIBUTES ATAU BADGE PADA FRAME BOOTH
         local attrType = frame:GetAttribute("Type") or frame:GetAttribute("ItemType") or frame:GetAttribute("Category")
         local itemBtn = frame:FindFirstChild("Frame")
         if not attrType and itemBtn then
@@ -390,30 +450,6 @@ function PlazaEngine.DetectCategory(frame, itemName)
             end
         end
 
-        -- 2. Cek ViewportFrame (Model 3D yang ditampilkan)
-        local vp = frame:FindFirstChildWhichIsA("ViewportFrame", true)
-        if vp then
-            -- EMOTE di Blade Ball selalu menggunakan Model Dummy Karakter R15/R6 yang berpose
-            if vp:FindFirstChildWhichIsA("Humanoid", true) 
-               or vp:FindFirstChild("HumanoidRootPart", true)
-               or vp:FindFirstChild("Head", true)
-               or vp:FindFirstChild("UpperTorso", true)
-               or vp:FindFirstChild("Torso", true) then
-                return "Emote"
-            end
-
-            -- Cek objek di dalam ViewportFrame
-            for _, obj in ipairs(vp:GetDescendants()) do
-                local on = obj.Name:lower()
-                if on:find("sword") or on:find("katana") or on:find("blade") or on:find("scythe") or on:find("handle") or on:find("weapon") then
-                    return "Sword"
-                elseif on:find("explosion") or on:find("vfx") or on:find("effect") or on:find("burst") or on:find("ball") then
-                    return "Explosion"
-                end
-            end
-        end
-
-        -- 3. Cek ImageLabel / Icon / Badge
         for _, img in ipairs(frame:GetDescendants()) do
             if img:IsA("ImageLabel") and img.Visible then
                 local iname = img.Name:lower()
@@ -425,53 +461,149 @@ function PlazaEngine.DetectCategory(frame, itemName)
         end
     end
 
-    return "Sword"
-end
-
-function PlazaEngine.GetRapValue(itemName, category)
-    if not itemName or #itemName == 0 then return 0 end
-    local clean = itemName:lower():gsub("%s+", "")
-    local catLower = category and category:lower() or "unknown"
-    
-    -- 1. Cari key spesifik kategori: misalnya "higanbanakatana#emote" atau "higanbanakatana#sword"
-    if catLower ~= "unknown" then
-        local specificKey = clean .. "#" .. catLower
-        if RAP_DATABASE[specificKey] then
-            local v = tonumber(RAP_DATABASE[specificKey])
-            if v and v > 0 then return v end
-        end
-    end
-
-    -- 2. Cek entry di database
-    local entry = RAP_DATABASE[clean]
-    if type(entry) == "table" then
-        -- Jika kategori terdeteksi, ambil nilai kategori tersebut
-        if catLower ~= "unknown" then
-            for cName, cVal in pairs(entry) do
-                if tostring(cName):lower() == catLower then
-                    return tonumber(cVal) or 0
+    -- 4. CEK REPLICATEDSTORAGE BLADE BALL (Aset internal game)
+    pcall(function()
+        local rs = game:GetService("ReplicatedStorage")
+        local exploDirs = {
+            rs:FindFirstChild("Explosions"),
+            rs:FindFirstChild("Misc") and rs.Misc:FindFirstChild("DataExplosions"),
+            rs:FindFirstChild("Shared") and rs.Shared:FindFirstChild("Explosions")
+        }
+        for _, dir in ipairs(exploDirs) do
+            if dir then
+                for _, ch in ipairs(dir:GetChildren()) do
+                    local cn = ch.Name:lower():gsub("%s+", "")
+                    if cn == cleanName or cn == cleanName .. "explosion" or cleanName == cn .. "explosion" then
+                        return "Explosion"
+                    end
                 end
             end
         end
-        
-        -- [PERLINDUNGAN ANTI-FALSE DEAL]:
-        -- Jika kategori TIDAK dapat dipastikan (Unknown), dan item punya 2 kategori (Sword vs Emote/Explo),
-        -- AMBIL NILAI TERENDAH! Agar jika yang dijual adalah Emote murah (misal 332), TIDAK dianggap deal Sword (4766).
-        local minVal = math.huge
-        for _, cVal in pairs(entry) do
-            local num = tonumber(cVal) or 0
-            if num > 0 and num < minVal then
-                minVal = num
+
+        local emoteDirs = {
+            rs:FindFirstChild("Emotes"),
+            rs:FindFirstChild("Misc") and rs.Misc:FindFirstChild("Emotes"),
+            rs:FindFirstChild("Shared") and rs.Shared:FindFirstChild("Emotes")
+        }
+        for _, dir in ipairs(emoteDirs) do
+            if dir then
+                for _, ch in ipairs(dir:GetChildren()) do
+                    local cn = ch.Name:lower():gsub("%s+", "")
+                    if cn == cleanName or cn == cleanName .. "emote" or cleanName == cn .. "emote" then
+                        return "Emote"
+                    end
+                end
             end
         end
-        if minVal ~= math.huge then
-            return minVal
-        end
-    elseif type(entry) == "number" then
-        return entry
+    end)
+
+    -- 5. CEK APAKAH NAMA INI DIKETAHUI MEMILIKI VARIAN EXPLOSION / EMOTE
+    -- Jika di database item ini memiliki multi-kategori (ada Emote atau Explosion):
+    -- JANGAN langsung asumsikan Sword meskipun ada kata 'katana' atau 'blade'!
+    -- Tandai sebagai "Unknown" agar dianalisis secara aman oleh GetRapValue via perbandingan harga.
+    local entry = RAP_DATABASE[lowerName] or RAP_DATABASE[cleanName]
+    if type(entry) == "table" and (entry.Explosion or entry.Emote) then
+        return "Unknown"
     end
 
-    return 0
+    -- 6. KEYWORD SENJATA UNTUK ITEM TUNGGAL (Aman karena sudah dipastikan bukan multi-kategori)
+    if lowerName:find("blade") or lowerName:find("sword") or lowerName:find("katana") or lowerName:find("scythe") or lowerName:find("spear") or lowerName:find("dagger") or lowerName:find("axe") or lowerName:find("rapier") or lowerName:find("hammer") or lowerName:find("bat") or lowerName:find("staff") or lowerName:find("greatblade") or lowerName:find("thorn") or lowerName:find("wrath") or lowerName:find("tanto") or lowerName:find("bow") or lowerName:find("slicer") or lowerName:find("fang") or lowerName:find("cutter") or lowerName:find("cleaver") then
+        return "Sword"
+    end
+
+    return "Unknown"
+end
+
+function PlazaEngine.GetRapValue(itemName, category, price)
+    if not itemName or #itemName == 0 then return 0, "Unknown" end
+    price = tonumber(price) or 0
+
+    local kSpaced = itemName:lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+    local kClean = itemName:lower():gsub("%s+", "")
+    local catLower = category and category:lower() or "unknown"
+
+    -- 1. Ambil entry dari database (cek dengan spasi maupun tanpa spasi)
+    local entry = RAP_DATABASE[kSpaced] or RAP_DATABASE[kClean]
+
+    -- JIKA ITEM MEMILIKI MULTI-KATEGORI (Tabel { Sword = ..., Explosion = ..., Emote = ... })
+    if type(entry) == "table" then
+        local swordVal = tonumber(entry.Sword or entry.sword)
+        local emoteVal = tonumber(entry.Emote or entry.emote)
+        local exploVal = tonumber(entry.Explosion or entry.explosion)
+
+        local cheapNonSwordVal = nil
+        local cheapType = "Unknown"
+        if emoteVal and exploVal then
+            if emoteVal <= exploVal then
+                cheapNonSwordVal = emoteVal
+                cheapType = "Emote"
+            else
+                cheapNonSwordVal = exploVal
+                cheapType = "Explosion"
+            end
+        elseif emoteVal then
+            cheapNonSwordVal = emoteVal
+            cheapType = "Emote"
+        elseif exploVal then
+            cheapNonSwordVal = exploVal
+            cheapType = "Explosion"
+        end
+
+        -- Kasus A: Kategori terdeteksi sebagai Explosion
+        if catLower == "explosion" then
+            if exploVal and exploVal > 0 then return exploVal, "Explosion" end
+            if cheapNonSwordVal and cheapNonSwordVal > 0 then return cheapNonSwordVal, cheapType end
+        end
+
+        -- Kasus B: Kategori terdeteksi sebagai Emote
+        if catLower == "emote" then
+            if emoteVal and emoteVal > 0 then return emoteVal, "Emote" end
+            if cheapNonSwordVal and cheapNonSwordVal > 0 then return cheapNonSwordVal, cheapType end
+        end
+
+        -- Kasus C: Kategori adalah Unknown (tidak dapat diverifikasi 100%)
+        if catLower == "unknown" then
+            -- [PROTEKSI 1]: Jika ada varian murah (Emote / Explosion), SELALU gunakan nilai murah!
+            -- Ini mencegah barang murah seharga 300 token dikira deal pedang 3.000+ token.
+            if cheapNonSwordVal and cheapNonSwordVal > 0 then
+                return cheapNonSwordVal, cheapType
+            end
+            if swordVal and swordVal > 0 then
+                return swordVal, "Sword"
+            end
+        end
+
+        -- Kasus D: Kategori dikira "Sword"
+        -- [PROTEKSI 2: HEURISTIK KISARAN HARGA / ANTI-SCAM]:
+        -- Misal: Crimson Kagune (Sword 3280, Explo 198). Dijual di booth 300 token.
+        -- Jika harga (300) berada di kisaran varian murah (<= cheapNonSword * 2.2) dan < 35% dari sword:
+        -- MAKA INI 100% ADALAH VARIAN MURAH (Explosion/Emote), BUKAN PEDANG ASLI!
+        if swordVal and swordVal > 0 and cheapNonSwordVal and cheapNonSwordVal > 0 then
+            if price > 0 and price <= (cheapNonSwordVal * 2.2) and price < (swordVal * 0.35) then
+                return cheapNonSwordVal, cheapType
+            end
+            return swordVal, "Sword"
+        end
+
+        if swordVal and swordVal > 0 then return swordVal, "Sword" end
+        if cheapNonSwordVal and cheapNonSwordVal > 0 then return cheapNonSwordVal, cheapType end
+    end
+
+    -- 2. Cek key eksplisit spesifik: misalnya "higanbana katana#emote"
+    if catLower ~= "unknown" then
+        local specificVal = RAP_DATABASE[kSpaced .. "#" .. catLower] or RAP_DATABASE[kClean .. "#" .. catLower]
+        if specificVal and tonumber(specificVal) and tonumber(specificVal) > 0 then
+            local properCat = (catLower == "sword" and "Sword") or (catLower == "emote" and "Emote") or (catLower == "explosion" and "Explosion") or "Unknown"
+            return tonumber(specificVal), properCat
+        end
+    end
+
+    -- 3. Entry berupa single number (item unik tanpa varian ganda)
+    if type(entry) == "number" and entry > 0 then
+        return entry, (catLower ~= "unknown" and category or "Sword")
+    end
+
+    return 0, "Unknown"
 end
 
 function PlazaEngine.ScanAllBooths(statusCallback)
@@ -571,8 +703,9 @@ function PlazaEngine.ScanAllBooths(statusCallback)
                             end
 
                             if #itemName > 0 and itemName ~= "ItemName" and price > 0 then
-                                local category = PlazaEngine.DetectCategory(frame, itemName)
-                                local rap = PlazaEngine.GetRapValue(itemName, category)
+                                local detectedCategory = PlazaEngine.DetectCategory(frame, itemName)
+                                local rap, resolvedCategory = PlazaEngine.GetRapValue(itemName, detectedCategory, price)
+                                local category = resolvedCategory or detectedCategory
                                 local profit = (rap > 0) and (rap - price) or 0
                                 local discountPct = (rap > 0) and math.floor(((rap - price) / rap) * 100) or 0
                                 local isQualified = PlazaEngine.IsQualifiedDeal(rap, price)

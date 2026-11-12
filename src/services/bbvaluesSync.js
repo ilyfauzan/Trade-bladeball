@@ -73,22 +73,37 @@ async function sync() {
 
     if (!catMap[cleanKey]) catMap[cleanKey] = {};
     catMap[cleanKey][category] = value;
+
+    // Normalisasi nama set: jika nama berakhiran " Explosion" atau " Emote",
+    // tautkan juga nilai tersebut ke nama dasarnya (misal: "Crimson Kagune Explosion" -> "Crimson Kagune")
+    const baseName = name.replace(/\s+(explosion|emote)$/i, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    if (baseName.length > 2 && baseName !== cleanKey) {
+      if (!catMap[baseName]) catMap[baseName] = {};
+      catMap[baseName][category] = value;
+    }
   }
 
   const rapDatabase = {};
   let validCount = 0;
 
   for (const [name, cats] of Object.entries(catMap)) {
+    const unspaced = name.replace(/\s+/g, '');
     const catList = Object.keys(cats);
-    if (catList.length === 1) {
-      rapDatabase[name] = cats[catList[0]];
-    } else {
-      rapDatabase[name] = cats;
+    const entryVal = (catList.length === 1) ? cats[catList[0]] : cats;
+
+    // Simpan baik dengan spasi maupun tanpa spasi
+    rapDatabase[name] = entryVal;
+    if (unspaced !== name) {
+      rapDatabase[unspaced] = entryVal;
     }
 
-    // Simpan key eksplisit kategori: "higanbana katana#sword", "higanbana katana#emote"
+    // Simpan key eksplisit kategori: "higanbana katana#sword", "higanbanakatana#sword", dsb.
     for (const [catName, val] of Object.entries(cats)) {
-      rapDatabase[`${name}#${catName.toLowerCase()}`] = val;
+      const catKey = catName.toLowerCase();
+      rapDatabase[`${name}#${catKey}`] = val;
+      if (unspaced !== name) {
+        rapDatabase[`${unspaced}#${catKey}`] = val;
+      }
       validCount++;
     }
   }
