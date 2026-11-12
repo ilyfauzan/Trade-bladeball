@@ -587,6 +587,15 @@ function PlazaEngine.GetRapValue(itemName, category, price)
 
     -- JIKA ITEM MEMILIKI MULTI-KATEGORI (Tabel { Sword = ..., Explosion = ..., Emote = ... })
     if type(entry) == "table" then
+        -- A. Jika kategori sudah terverifikasi dari Frame/Viewport di booth (bukan "unknown")
+        if catLower ~= "unknown" then
+            for cName, cVal in pairs(entry) do
+                if tostring(cName):lower() == catLower and tonumber(cVal) and tonumber(cVal) > 0 then
+                    return tonumber(cVal), tostring(cName)
+                end
+            end
+        end
+
         local variants = {}
         for cName, cVal in pairs(entry) do
             local num = tonumber(cVal) or 0
@@ -599,21 +608,23 @@ function PlazaEngine.GetRapValue(itemName, category, price)
             -- Urutkan dari nilai terendah ke nilai tertinggi
             table.sort(variants, function(a, b) return a.val < b.val end)
 
-            -- [LOGIKA KISARAN HARGA CERDAS / NEAREST VALUE BRACKET]:
-            -- Default awal: Selalu pilih varian termurah agar 100% aman dari penipuan/salah jenis
+            -- [LOGIKA HARGA TERDEKAT / NEAREST ABSOLUTE VALUE]:
+            -- Cocokkan harga booth ke varian yang selisih jarak nilainya paling dekat!
+            -- Contoh kasus: Sea Turtle (Emote 928 vs Sword 10.821).
+            -- Jika dijual 1.222:
+            --   Jarak ke 928 = |1222 - 928| = 294
+            --   Jarak ke 10821 = |1222 - 10821| = 9599
+            -- Maka otomatis dipilih Emote (928).
+            -- Karena 1222 > 928 (rugi -294), maka deal ini langsung diabaikan!
             local chosen = variants[1]
+            local minDiff = math.huge
 
-            -- Cek dari varian termahal ke termurah:
-            -- Jika harga di booth >= 40% dari nilai varian tersebut, maka barang tersebut memang
-            -- varian itu (karena diskon wajar berada di kisaran 10% - 60% OFF).
-            -- Jika harga booth jauh di bawah 40% (misal harga 8 untuk varian 591, atau harga 300 untuk 3280),
-            -- maka ITU 100% ADALAH VARIAN MURAHNYA (Pedang 7 token / Explo 198 token)!
             if price > 0 then
-                for i = #variants, 1, -1 do
-                    local v = variants[i]
-                    if price >= (v.val * 0.4) then
+                for _, v in ipairs(variants) do
+                    local diff = math.abs(price - v.val)
+                    if diff < minDiff then
+                        minDiff = diff
                         chosen = v
-                        break
                     end
                 end
             end

@@ -1431,18 +1431,14 @@
   "blackninjastaremote#emote": 131,
   "black ninja star": {
     "Emote": 131,
-    "Explosion": 565,
     "Sword": 1864
   },
   "blackninjastar": {
     "Emote": 131,
-    "Explosion": 565,
     "Sword": 1864
   },
   "black ninja star#emote": 131,
   "blackninjastar#emote": 131,
-  "black ninja star#explosion": 565,
-  "blackninjastar#explosion": 565,
   "black ninja star#sword": 1864,
   "blackninjastar#sword": 1864,
   "black ninja star explosion": 565,
@@ -1455,18 +1451,14 @@
   "blackonikatanaemote#emote": 180,
   "black oni katana": {
     "Emote": 180,
-    "Explosion": 498,
     "Sword": 3237
   },
   "blackonikatana": {
     "Emote": 180,
-    "Explosion": 498,
     "Sword": 3237
   },
   "black oni katana#emote": 180,
   "blackonikatana#emote": 180,
-  "black oni katana#explosion": 498,
-  "blackonikatana#explosion": 498,
   "black oni katana#sword": 3237,
   "blackonikatana#sword": 3237,
   "black oni katana explosion": 498,
@@ -1841,18 +1833,14 @@
   "blossomkatanaemote#emote": 208,
   "blossom katana": {
     "Emote": 208,
-    "Explosion": 59,
     "Sword": 7490
   },
   "blossomkatana": {
     "Emote": 208,
-    "Explosion": 59,
     "Sword": 7490
   },
   "blossom katana#emote": 208,
   "blossomkatana#emote": 208,
-  "blossom katana#explosion": 59,
-  "blossomkatana#explosion": 59,
   "blossom katana#sword": 7490,
   "blossomkatana#sword": 7490,
   "blossom katana explosion": 59,
@@ -1949,18 +1937,14 @@
   "blueninjastaremote#emote": 109,
   "blue ninja star": {
     "Emote": 109,
-    "Explosion": 446,
     "Sword": 1803
   },
   "blueninjastar": {
     "Emote": 109,
-    "Explosion": 446,
     "Sword": 1803
   },
   "blue ninja star#emote": 109,
   "blueninjastar#emote": 109,
-  "blue ninja star#explosion": 446,
-  "blueninjastar#explosion": 446,
   "blue ninja star#sword": 1803,
   "blueninjastar#sword": 1803,
   "blue ninja star explosion": 446,
@@ -1973,18 +1957,14 @@
   "blueonikatanaemote#emote": 240,
   "blue oni katana": {
     "Emote": 240,
-    "Explosion": 475,
     "Sword": 3179
   },
   "blueonikatana": {
     "Emote": 240,
-    "Explosion": 475,
     "Sword": 3179
   },
   "blue oni katana#emote": 240,
   "blueonikatana#emote": 240,
-  "blue oni katana#explosion": 475,
-  "blueonikatana#explosion": 475,
   "blue oni katana#sword": 3179,
   "blueonikatana#sword": 3179,
   "blue oni katana explosion": 475,
@@ -2279,18 +2259,14 @@
   "calamityguardianemote#emote": 326,
   "calamity guardian": {
     "Emote": 326,
-    "Explosion": 764,
     "Sword": 2183
   },
   "calamityguardian": {
     "Emote": 326,
-    "Explosion": 764,
     "Sword": 2183
   },
   "calamity guardian#emote": 326,
   "calamityguardian#emote": 326,
-  "calamity guardian#explosion": 764,
-  "calamityguardian#explosion": 764,
   "calamity guardian#sword": 2183,
   "calamityguardian#sword": 2183,
   "calamity guardian explosion": 764,
@@ -2752,18 +2728,14 @@
   "chromabladeemote#emote": 554,
   "chroma blade": {
     "Emote": 554,
-    "Explosion": 1380,
     "Sword": 14052
   },
   "chromablade": {
     "Emote": 554,
-    "Explosion": 1380,
     "Sword": 14052
   },
   "chroma blade#emote": 554,
   "chromablade#emote": 554,
-  "chroma blade#explosion": 1380,
-  "chromablade#explosion": 1380,
   "chroma blade#sword": 14052,
   "chromablade#sword": 14052,
   "chroma blade explosion": 1380,
@@ -2820,18 +2792,14 @@
   "chromaninjastaremote#emote": 272,
   "chroma ninja star": {
     "Emote": 272,
-    "Explosion": 909,
     "Sword": 3696
   },
   "chromaninjastar": {
     "Emote": 272,
-    "Explosion": 909,
     "Sword": 3696
   },
   "chroma ninja star#emote": 272,
   "chromaninjastar#emote": 272,
-  "chroma ninja star#explosion": 909,
-  "chromaninjastar#explosion": 909,
   "chroma ninja star#sword": 3696,
   "chromaninjastar#sword": 3696,
   "chroma ninja star explosion": 909,
@@ -2844,18 +2812,14 @@
   "chromaonikatanaemote#emote": 876,
   "chroma oni katana": {
     "Emote": 876,
-    "Explosion": 1418,
     "Sword": 8163
   },
   "chromaonikatana": {
     "Emote": 876,
-    "Explosion": 1418,
     "Sword": 8163
   },
   "chroma oni katana#emote": 876,
   "chromaonikatana#emote": 876,
-  "chroma oni katana#explosion": 1418,
-  "chromaonikatana#explosion": 1418,
   "chroma oni katana#sword": 8163,
   "chromaonikatana#sword": 8163,
   "chroma oni katana explosion": 1418,
@@ -2872,18 +2836,14 @@
   "chromascytheemote#emote": 1472,
   "chroma scythe": {
     "Emote": 1472,
-    "Explosion": 972,
     "Sword": 8116
   },
   "chromascythe": {
     "Emote": 1472,
-    "Explosion": 972,
     "Sword": 8116
   },
   "chroma scythe#emote": 1472,
   "chromascythe#emote": 1472,
-  "chroma scythe#explosion": 972,
-  "chromascythe#explosion": 972,
   "chroma scythe#sword": 8116,
   "chromascythe#sword": 8116,
   "chroma scythe explosion": 972,
@@ -3108,11 +3068,9 @@
   "coffinemote#emote": 1568,
   "coffin": {
     "Emote": 1568,
-    "Explosion": 7713,
     "Sword": 9615
   },
   "coffin#emote": 1568,
-  "coffin#explosion": 7713,
   "coffin#sword": 9615,
   "coffin eruption": 3,
   "coffineruption": 3,
@@ -5240,18 +5198,14 @@
   "dualchromasetemote#emote": 767,
   "dual chroma set": {
     "Emote": 767,
-    "Explosion": 1525,
     "Sword": 12563
   },
   "dualchromaset": {
     "Emote": 767,
-    "Explosion": 1525,
     "Sword": 12563
   },
   "dual chroma set#emote": 767,
   "dualchromaset#emote": 767,
-  "dual chroma set#explosion": 1525,
-  "dualchromaset#explosion": 1525,
   "dual chroma set#sword": 12563,
   "dualchromaset#sword": 12563,
   "dual chroma set explosion": 1525,
@@ -8000,18 +7954,14 @@
   "dualyinyanggreatswordemote#emote": 637,
   "dual yin yang greatsword": {
     "Emote": 637,
-    "Explosion": 2257,
     "Sword": 4697
   },
   "dualyinyanggreatsword": {
     "Emote": 637,
-    "Explosion": 2257,
     "Sword": 4697
   },
   "dual yin yang greatsword#emote": 637,
   "dualyinyanggreatsword#emote": 637,
-  "dual yin yang greatsword#explosion": 2257,
-  "dualyinyanggreatsword#explosion": 2257,
   "dual yin yang greatsword#sword": 4697,
   "dualyinyanggreatsword#sword": 4697,
   "dual yin yang greatsword explosion": 2257,
@@ -8912,18 +8862,14 @@
   "fallenangelemote#emote": 562,
   "fallen angel": {
     "Emote": 562,
-    "Explosion": 1184,
     "Sword": 21907
   },
   "fallenangel": {
     "Emote": 562,
-    "Explosion": 1184,
     "Sword": 21907
   },
   "fallen angel#emote": 562,
   "fallenangel#emote": 562,
-  "fallen angel#explosion": 1184,
-  "fallenangel#explosion": 1184,
   "fallen angel#sword": 21907,
   "fallenangel#sword": 21907,
   "fallen angel explosion": 1184,
@@ -9326,18 +9272,14 @@
   "floppychickenemote#emote": 322,
   "floppy chicken": {
     "Emote": 322,
-    "Explosion": 1985,
     "Sword": 3726
   },
   "floppychicken": {
     "Emote": 322,
-    "Explosion": 1985,
     "Sword": 3726
   },
   "floppy chicken#emote": 322,
   "floppychicken#emote": 322,
-  "floppy chicken#explosion": 1985,
-  "floppychicken#explosion": 1985,
   "floppy chicken#sword": 3726,
   "floppychicken#sword": 3726,
   "floppy chicken explosion": 1985,
@@ -9470,18 +9412,14 @@
   "foxkatanaemote#emote": 326,
   "fox katana": {
     "Emote": 326,
-    "Explosion": 502,
     "Sword": 6204
   },
   "foxkatana": {
     "Emote": 326,
-    "Explosion": 502,
     "Sword": 6204
   },
   "fox katana#emote": 326,
   "foxkatana#emote": 326,
-  "fox katana#explosion": 502,
-  "foxkatana#explosion": 502,
   "fox katana#sword": 6204,
   "foxkatana#sword": 6204,
   "fox katana explosion": 502,
@@ -10786,18 +10724,14 @@
   "greenninjastaremote#emote": 120,
   "green ninja star": {
     "Emote": 120,
-    "Explosion": 378,
     "Sword": 1553
   },
   "greenninjastar": {
     "Emote": 120,
-    "Explosion": 378,
     "Sword": 1553
   },
   "green ninja star#emote": 120,
   "greenninjastar#emote": 120,
-  "green ninja star#explosion": 378,
-  "greenninjastar#explosion": 378,
   "green ninja star#sword": 1553,
   "greenninjastar#sword": 1553,
   "green ninja star explosion": 378,
@@ -12412,18 +12346,14 @@
   "kittykatanaemote#emote": 666,
   "kitty katana": {
     "Emote": 666,
-    "Explosion": 2364,
     "Sword": 16643
   },
   "kittykatana": {
     "Emote": 666,
-    "Explosion": 2364,
     "Sword": 16643
   },
   "kitty katana#emote": 666,
   "kittykatana#emote": 666,
-  "kitty katana#explosion": 2364,
-  "kittykatana#explosion": 2364,
   "kitty katana#sword": 16643,
   "kittykatana#sword": 16643,
   "kitty katana explosion": 2364,
@@ -14536,18 +14466,14 @@
   "onighostemote#emote": 694,
   "oni ghost": {
     "Emote": 694,
-    "Explosion": 594,
     "Sword": 7336
   },
   "onighost": {
     "Emote": 694,
-    "Explosion": 594,
     "Sword": 7336
   },
   "oni ghost#emote": 694,
   "onighost#emote": 694,
-  "oni ghost#explosion": 594,
-  "onighost#explosion": 594,
   "oni ghost#sword": 7336,
   "onighost#sword": 7336,
   "oni ghost explosion": 594,
@@ -14802,18 +14728,14 @@
   "pearlangelkatanaemote#emote": 223,
   "pearl angel katana": {
     "Emote": 223,
-    "Explosion": 379,
     "Sword": 3817
   },
   "pearlangelkatana": {
     "Emote": 223,
-    "Explosion": 379,
     "Sword": 3817
   },
   "pearl angel katana#emote": 223,
   "pearlangelkatana#emote": 223,
-  "pearl angel katana#explosion": 379,
-  "pearlangelkatana#explosion": 379,
   "pearl angel katana#sword": 3817,
   "pearlangelkatana#sword": 3817,
   "pearl angel katana explosion": 379,
@@ -15162,18 +15084,14 @@
   "pinkninjastaremote#emote": 126,
   "pink ninja star": {
     "Emote": 126,
-    "Explosion": 423,
     "Sword": 1670
   },
   "pinkninjastar": {
     "Emote": 126,
-    "Explosion": 423,
     "Sword": 1670
   },
   "pink ninja star#emote": 126,
   "pinkninjastar#emote": 126,
-  "pink ninja star#explosion": 423,
-  "pinkninjastar#explosion": 423,
   "pink ninja star#sword": 1670,
   "pinkninjastar#sword": 1670,
   "pink ninja star explosion": 423,
@@ -15186,18 +15104,14 @@
   "pinkonikatanaemote#emote": 191,
   "pink oni katana": {
     "Emote": 191,
-    "Explosion": 444,
     "Sword": 3086
   },
   "pinkonikatana": {
     "Emote": 191,
-    "Explosion": 444,
     "Sword": 3086
   },
   "pink oni katana#emote": 191,
   "pinkonikatana#emote": 191,
-  "pink oni katana#explosion": 444,
-  "pinkonikatana#explosion": 444,
   "pink oni katana#sword": 3086,
   "pinkonikatana#sword": 3086,
   "pink oni katana explosion": 444,
@@ -15358,18 +15272,14 @@
   "poisonedbunnyemote#emote": 760,
   "poisoned bunny": {
     "Emote": 760,
-    "Explosion": 770,
     "Sword": 5255
   },
   "poisonedbunny": {
     "Emote": 760,
-    "Explosion": 770,
     "Sword": 5255
   },
   "poisoned bunny#emote": 760,
   "poisonedbunny#emote": 760,
-  "poisoned bunny#explosion": 770,
-  "poisonedbunny#explosion": 770,
   "poisoned bunny#sword": 5255,
   "poisonedbunny#sword": 5255,
   "poisoned bunny explosion": 770,
@@ -15562,18 +15472,14 @@
   "prismaticodachiemote#emote": 189,
   "prismatic odachi": {
     "Emote": 189,
-    "Explosion": 283,
     "Sword": 3238
   },
   "prismaticodachi": {
     "Emote": 189,
-    "Explosion": 283,
     "Sword": 3238
   },
   "prismatic odachi#emote": 189,
   "prismaticodachi#emote": 189,
-  "prismatic odachi#explosion": 283,
-  "prismaticodachi#explosion": 283,
   "prismatic odachi#sword": 3238,
   "prismaticodachi#sword": 3238,
   "prismatic odachi explosion": 283,
@@ -15700,11 +15606,7 @@
   "purificationexplosion": 4,
   "purification explosion#explosion": 4,
   "purificationexplosion#explosion": 4,
-  "purification": {
-    "Explosion": 4,
-    "Emote": 7
-  },
-  "purification#explosion": 4,
+  "purification": 7,
   "purification#emote": 7,
   "purity blade": 373,
   "purityblade": 373,
@@ -15750,18 +15652,14 @@
   "purpleonikatanaemote#emote": 235,
   "purple oni katana": {
     "Emote": 235,
-    "Explosion": 358,
     "Sword": 3008
   },
   "purpleonikatana": {
     "Emote": 235,
-    "Explosion": 358,
     "Sword": 3008
   },
   "purple oni katana#emote": 235,
   "purpleonikatana#emote": 235,
-  "purple oni katana#explosion": 358,
-  "purpleonikatana#explosion": 358,
   "purple oni katana#sword": 3008,
   "purpleonikatana#sword": 3008,
   "purple oni katana explosion": 358,
@@ -16368,18 +16266,14 @@
   "redninjastaremote#emote": 151,
   "red ninja star": {
     "Emote": 151,
-    "Explosion": 397,
     "Sword": 1569
   },
   "redninjastar": {
     "Emote": 151,
-    "Explosion": 397,
     "Sword": 1569
   },
   "red ninja star#emote": 151,
   "redninjastar#emote": 151,
-  "red ninja star#explosion": 397,
-  "redninjastar#explosion": 397,
   "red ninja star#sword": 1569,
   "redninjastar#sword": 1569,
   "red ninja star explosion": 397,
@@ -16392,18 +16286,14 @@
   "redonikatanaemote#emote": 265,
   "red oni katana": {
     "Emote": 265,
-    "Explosion": 396,
     "Sword": 3102
   },
   "redonikatana": {
     "Emote": 265,
-    "Explosion": 396,
     "Sword": 3102
   },
   "red oni katana#emote": 265,
   "redonikatana#emote": 265,
-  "red oni katana#explosion": 396,
-  "redonikatana#explosion": 396,
   "red oni katana#sword": 3102,
   "redonikatana#sword": 3102,
   "red oni katana explosion": 396,
@@ -16467,17 +16357,13 @@
   "regret blades explosion#explosion": 1470,
   "regretbladesexplosion#explosion": 1470,
   "regret blades": {
-    "Explosion": 1470,
     "Emote": 420,
     "Sword": 21253
   },
   "regretblades": {
-    "Explosion": 1470,
     "Emote": 420,
     "Sword": 21253
   },
-  "regret blades#explosion": 1470,
-  "regretblades#explosion": 1470,
   "regret blades#emote": 420,
   "regretblades#emote": 420,
   "regret blades#sword": 21253,
@@ -16546,11 +16432,7 @@
   "resurrectionexplosion": 126,
   "resurrection explosion#explosion": 126,
   "resurrectionexplosion#explosion": 126,
-  "resurrection": {
-    "Explosion": 126,
-    "Emote": 6
-  },
-  "resurrection#explosion": 126,
+  "resurrection": 6,
   "resurrection#emote": 6,
   "resurrection scythe emote": 209,
   "resurrectionscytheemote": 209,
@@ -17104,18 +16986,14 @@
   "sakura'srequiememote#emote": 221,
   "sakura's requiem": {
     "Emote": 221,
-    "Explosion": 406,
     "Sword": 4042
   },
   "sakura'srequiem": {
     "Emote": 221,
-    "Explosion": 406,
     "Sword": 4042
   },
   "sakura's requiem#emote": 221,
   "sakura'srequiem#emote": 221,
-  "sakura's requiem#explosion": 406,
-  "sakura'srequiem#explosion": 406,
   "sakura's requiem#sword": 4042,
   "sakura'srequiem#sword": 4042,
   "sakura's requiem explosion": 406,
@@ -17746,18 +17624,14 @@
   "shatterflightbirdemote#emote": 455,
   "shatterflight bird": {
     "Emote": 455,
-    "Explosion": 3031,
     "Sword": 6950
   },
   "shatterflightbird": {
     "Emote": 455,
-    "Explosion": 3031,
     "Sword": 6950
   },
   "shatterflight bird#emote": 455,
   "shatterflightbird#emote": 455,
-  "shatterflight bird#explosion": 3031,
-  "shatterflightbird#explosion": 3031,
   "shatterflight bird#sword": 6950,
   "shatterflightbird#sword": 6950,
   "shatterflight bird explosion": 3031,
@@ -18645,11 +18519,9 @@
   "spinalisemote#emote": 820,
   "spinalis": {
     "Emote": 820,
-    "Explosion": 1340,
     "Sword": 11312
   },
   "spinalis#emote": 820,
-  "spinalis#explosion": 1340,
   "spinalis#sword": 11312,
   "spinalis explosion": 1340,
   "spinalisexplosion": 1340,
@@ -18819,18 +18691,14 @@
   "starwandemote#emote": 169,
   "star wand": {
     "Emote": 169,
-    "Explosion": 475,
     "Sword": 3421
   },
   "starwand": {
     "Emote": 169,
-    "Explosion": 475,
     "Sword": 3421
   },
   "star wand#emote": 169,
   "starwand#emote": 169,
-  "star wand#explosion": 475,
-  "starwand#explosion": 475,
   "star wand#sword": 3421,
   "starwand#sword": 3421,
   "star wand explosion": 475,
@@ -19079,11 +18947,9 @@
   "stormbaneemote#emote": 175,
   "stormbane": {
     "Emote": 175,
-    "Explosion": 388,
     "Sword": 2398
   },
   "stormbane#emote": 175,
-  "stormbane#explosion": 388,
   "stormbane#sword": 2398,
   "stormbane explosion": 388,
   "stormbaneexplosion": 388,
@@ -19473,11 +19339,9 @@
   "t-rexemote#emote": 447,
   "t-rex": {
     "Emote": 447,
-    "Explosion": 714,
     "Sword": 11561
   },
   "t-rex#emote": 447,
-  "t-rex#explosion": 714,
   "t-rex#sword": 11561,
   "t-rex explosion": 714,
   "t-rexexplosion": 714,
@@ -19609,18 +19473,14 @@
   "thecurseemote#emote": 343,
   "the curse": {
     "Emote": 343,
-    "Explosion": 1274,
     "Sword": 4350
   },
   "thecurse": {
     "Emote": 343,
-    "Explosion": 1274,
     "Sword": 4350
   },
   "the curse#emote": 343,
   "thecurse#emote": 343,
-  "the curse#explosion": 1274,
-  "thecurse#explosion": 1274,
   "the curse#sword": 4350,
   "thecurse#sword": 4350,
   "the curse explosion": 1274,
@@ -20141,11 +20001,7 @@
   "undeadexplosion": 4,
   "undead explosion#explosion": 4,
   "undeadexplosion#explosion": 4,
-  "undead": {
-    "Explosion": 4,
-    "Emote": 4
-  },
-  "undead#explosion": 4,
+  "undead": 4,
   "undead#emote": 4,
   "underworld scythe": 497897,
   "underworldscythe": 497897,
@@ -20915,18 +20771,14 @@
   "wickedcrowemote#emote": 383,
   "wicked crow": {
     "Emote": 383,
-    "Explosion": 683,
     "Sword": 9326
   },
   "wickedcrow": {
     "Emote": 383,
-    "Explosion": 683,
     "Sword": 9326
   },
   "wicked crow#emote": 383,
   "wickedcrow#emote": 383,
-  "wicked crow#explosion": 683,
-  "wickedcrow#explosion": 683,
   "wicked crow#sword": 9326,
   "wickedcrow#sword": 9326,
   "wicked crow explosion": 683,
@@ -21049,18 +20901,14 @@
   "winterwolfemote#emote": 1279,
   "winter wolf": {
     "Emote": 1279,
-    "Explosion": 2541,
     "Sword": 50769
   },
   "winterwolf": {
     "Emote": 1279,
-    "Explosion": 2541,
     "Sword": 50769
   },
   "winter wolf#emote": 1279,
   "winterwolf#emote": 1279,
-  "winter wolf#explosion": 2541,
-  "winterwolf#explosion": 2541,
   "winter wolf#sword": 50769,
   "winterwolf#sword": 50769,
   "winter wolf explosion": 2541,
@@ -21224,17 +21072,13 @@
   "wolf greatsword explosion#explosion": 1018,
   "wolfgreatswordexplosion#explosion": 1018,
   "wolf greatsword": {
-    "Explosion": 1018,
     "Emote": 1987,
     "Sword": 14392
   },
   "wolfgreatsword": {
-    "Explosion": 1018,
     "Emote": 1987,
     "Sword": 14392
   },
-  "wolf greatsword#explosion": 1018,
-  "wolfgreatsword#explosion": 1018,
   "wolf greatsword#emote": 1987,
   "wolfgreatsword#emote": 1987,
   "wolf greatsword#sword": 14392,
@@ -21355,18 +21199,14 @@
   "yinyanggreatswordemote#emote": 558,
   "yin yang greatsword": {
     "Emote": 558,
-    "Explosion": 694,
     "Sword": 3250
   },
   "yinyanggreatsword": {
     "Emote": 558,
-    "Explosion": 694,
     "Sword": 3250
   },
   "yin yang greatsword#emote": 558,
   "yinyanggreatsword#emote": 558,
-  "yin yang greatsword#explosion": 694,
-  "yinyanggreatsword#explosion": 694,
   "yin yang greatsword#sword": 3250,
   "yinyanggreatsword#sword": 3250,
   "yin yang greatsword explosion": 694,
@@ -21387,18 +21227,14 @@
   "yinyangparasolemote#emote": 321,
   "yin yang parasol": {
     "Emote": 321,
-    "Explosion": 607,
     "Sword": 1566
   },
   "yinyangparasol": {
     "Emote": 321,
-    "Explosion": 607,
     "Sword": 1566
   },
   "yin yang parasol#emote": 321,
   "yinyangparasol#emote": 321,
-  "yin yang parasol#explosion": 607,
-  "yinyangparasol#explosion": 607,
   "yin yang parasol#sword": 1566,
   "yinyangparasol#sword": 1566,
   "yin yang parasol explosion": 607,
@@ -21739,18 +21575,14 @@
   "dualstrawberrycakeblade#sword": 375,
   "red moon katana": {
     "Emote": 936,
-    "Explosion": 560,
     "Sword": 3247
   },
   "redmoonkatana": {
     "Emote": 936,
-    "Explosion": 560,
     "Sword": 3247
   },
   "red moon katana#emote": 936,
   "redmoonkatana#emote": 936,
-  "red moon katana#explosion": 560,
-  "redmoonkatana#explosion": 560,
   "red moon katana#sword": 3247,
   "redmoonkatana#sword": 3247,
   "red strawberry garden": 93,
@@ -21844,17 +21676,13 @@
   "sea turtle explosion#explosion": 1533,
   "seaturtleexplosion#explosion": 1533,
   "sea turtle": {
-    "Explosion": 1533,
     "Emote": 928,
     "Sword": 10821
   },
   "seaturtle": {
-    "Explosion": 1533,
     "Emote": 928,
     "Sword": 10821
   },
-  "sea turtle#explosion": 1533,
-  "seaturtle#explosion": 1533,
   "sea turtle#emote": 928,
   "seaturtle#emote": 928,
   "sea turtle#sword": 10821,
@@ -22176,17 +22004,13 @@
   "starlit halo wings explosion#explosion": 331,
   "starlithalowingsexplosion#explosion": 331,
   "starlit halo wings": {
-    "Explosion": 331,
     "Emote": 2160,
     "Sword": 13745
   },
   "starlithalowings": {
-    "Explosion": 331,
     "Emote": 2160,
     "Sword": 13745
   },
-  "starlit halo wings#explosion": 331,
-  "starlithalowings#explosion": 331,
   "starlit halo wings#emote": 2160,
   "starlithalowings#emote": 2160,
   "starlit halo wings#sword": 13745,
@@ -22581,44 +22405,34 @@
   "primordialloop#explosion": 121,
   "crimson kagune": {
     "Sword": 3280,
-    "Emote": 140,
-    "Explosion": 198
+    "Emote": 140
   },
   "crimsonkagune": {
     "Sword": 3280,
-    "Emote": 140,
-    "Explosion": 198
+    "Emote": 140
   },
   "crimson kagune#sword": 3280,
   "crimsonkagune#sword": 3280,
   "crimson kagune#emote": 140,
   "crimsonkagune#emote": 140,
-  "crimson kagune#explosion": 198,
-  "crimsonkagune#explosion": 198,
   "phantom ops": {
     "Sword": 4183,
-    "Emote": 179,
-    "Explosion": 376
+    "Emote": 179
   },
   "phantomops": {
     "Sword": 4183,
-    "Emote": 179,
-    "Explosion": 376
+    "Emote": 179
   },
   "phantom ops#sword": 4183,
   "phantomops#sword": 4183,
   "phantom ops#emote": 179,
   "phantomops#emote": 179,
-  "phantom ops#explosion": 376,
-  "phantomops#explosion": 376,
   "deathrider": {
     "Sword": 11926,
-    "Emote": 537,
-    "Explosion": 1410
+    "Emote": 537
   },
   "deathrider#sword": 11926,
   "deathrider#emote": 537,
-  "deathrider#explosion": 1410,
   "royal relic blade": 156,
   "royalrelicblade": 156,
   "royal relic blade#sword": 156,
@@ -22955,20 +22769,16 @@
   "dualverdantthornblade#emote": 486,
   "ryuzakura katana": {
     "Sword": 4474,
-    "Emote": 512,
-    "Explosion": 515
+    "Emote": 512
   },
   "ryuzakurakatana": {
     "Sword": 4474,
-    "Emote": 512,
-    "Explosion": 515
+    "Emote": 512
   },
   "ryuzakura katana#sword": 4474,
   "ryuzakurakatana#sword": 4474,
   "ryuzakura katana#emote": 512,
   "ryuzakurakatana#emote": 512,
-  "ryuzakura katana#explosion": 515,
-  "ryuzakurakatana#explosion": 515,
   "swan serenity": {
     "Sword": 12147,
     "Emote": 387

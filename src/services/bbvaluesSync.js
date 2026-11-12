@@ -73,14 +73,6 @@ async function sync() {
 
     if (!catMap[cleanKey]) catMap[cleanKey] = {};
     catMap[cleanKey][category] = value;
-
-    // Normalisasi nama set: jika nama berakhiran " Explosion" atau " Emote",
-    // tautkan juga nilai tersebut ke nama dasarnya (misal: "Crimson Kagune Explosion" -> "Crimson Kagune")
-    const baseName = name.replace(/\s+(explosion|emote)$/i, '').toLowerCase().replace(/\s+/g, ' ').trim();
-    if (baseName.length > 2 && baseName !== cleanKey) {
-      if (!catMap[baseName]) catMap[baseName] = {};
-      catMap[baseName][category] = value;
-    }
   }
 
   const rapDatabase = {};
