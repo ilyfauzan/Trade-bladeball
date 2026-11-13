@@ -914,6 +914,190 @@ function PlazaEngine.ScanAllBooths(statusCallback)
     if statusCallback then statusCallback("Scan Selesai!") end
 end
 
+-- ==============================================================================
+-- [5.5] MODULE: ANTI-SCAM FAST SNIPER & TRAP SHIELD
+-- Melawan pelaku "Switcheroo / Bait & Switch Scam" di Trade Plaza yang sengaja
+-- pasang 1 token lalu secepat kilat menaikkan ke 11.000 token untuk menjebak pembeli.
+-- ==============================================================================
+local AntiScamEngine = {
+    Config = {
+        MaxBuyPrice = 10,        -- Batas MAKSIMAL harga yang boleh dibeli (Misal: 1 s/d 10 token)
+        MinItemRap = 300,        -- Minimal RAP resmi item agar tidak buang token
+        IsActive = false,
+        LockedBoothName = "Belum Dikunci",
+        TargetBooth = nil
+    },
+    IsProcessing = false,
+    ConnectedSignals = {}
+}
+
+function AntiScamEngine.SendDiscordVictory(itemName, price, rap, seller)
+    local targetWebhook = DISCORD_WEBHOOK_URL
+    local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
+    if not req or not targetWebhook or #targetWebhook == 0 then return end
+
+    task.spawn(function()
+        pcall(function()
+            local payload = HttpService:JSONEncode({
+                username = "Blade Ball Anti-Scam Counter",
+                embeds = {{
+                    title = "🎯 SCAMMER TERTIPU! ITEM 1 TOKEN BERHASIL DIREBUT!",
+                    color = 5763719, -- Hijau Neon
+                    description = "Berhasil memotong scammer switcheroo sebelum dia sempat mencabut itemnya!",
+                    fields = {
+                        { name = "🗡️ Nama Item", value = tostring(itemName), inline = true },
+                        { name = "💰 Harga Dibeli", value = string.format("**%s** tokens", Util.FormatNumber(price)), inline = true },
+                        { name = "📊 Value RAP Asli", value = string.format("**%s** tokens", Util.FormatNumber(rap)), inline = true },
+                        { name = "👤 Scammer Pemilik", value = "@" .. tostring(seller), inline = true },
+                        { name = "🕒 Waktu", value = os.date("%H:%M:%S WIB"), inline = true }
+                    },
+                    footer = { text = "Anti-Scam Fast Counter • Blade Ball Plaza Sniper" },
+                    timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+                }}
+            })
+            req({
+                Url = targetWebhook,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = payload
+            })
+        end)
+    end)
+end
+
+-- Menangani pop-up konfirmasi game (jika game memunculkan prompt "Yakin beli?")
+function AntiScamEngine.WatchConfirmationPrompt()
+    local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pGui then return end
+
+    pGui.DescendantAdded:Connect(function(desc)
+        if not AntiScamEngine.Config.IsActive then return end
+
+        local n = desc.Name:lower()
+        if desc:IsA("TextButton") and (n:find("yes") or n:find("confirm") or n:find("accept") or n:find("buy")) then
+            local parentFrame = desc.Parent
+            local priceInPrompt = 0
+            for _, label in ipairs(parentFrame:GetDescendants()) do
+                if label:IsA("TextLabel") and label.Visible then
+                    local p = Util.ParsePrice(label.Text)
+                    if p > priceInPrompt then priceInPrompt = p end
+                end
+            end
+
+            -- Jika harga di atas batas kita (jebakan 11k):
+            if priceInPrompt > AntiScamEngine.Config.MaxBuyPrice then
+                warn("🚨 SCAM PROMPT DETECTED! Harga jebakan:", priceInPrompt, "-> BATALKAN!")
+                for _, btn in ipairs(parentFrame:GetDescendants()) do
+                    if btn:IsA("TextButton") and (btn.Name:lower():find("no") or btn.Name:lower():find("cancel") or btn.Text:lower():find("cancel") or btn.Text:lower():find("no")) then
+                        pcall(function()
+                            if firesignal then firesignal(btn.Activated or btn.MouseButton1Click) end
+                        end)
+                        break
+                    end
+                end
+                Util.Notify("🛡️ SCAM DIBATALKAN!", "Scammer mencoba menjual di harga " .. Util.FormatNumber(priceInPrompt) .. " token! Dibatalkan otomatis!")
+            elseif priceInPrompt <= AntiScamEngine.Config.MaxBuyPrice and priceInPrompt > 0 then
+                pcall(function()
+                    if firesignal then firesignal(desc.Activated or desc.MouseButton1Click) end
+                end)
+            end
+        end
+    end)
+end
+task.spawn(AntiScamEngine.WatchConfirmationPrompt)
+
+function AntiScamEngine.AttemptPurchase(frame, sellerName)
+    if AntiScamEngine.IsProcessing then return end
+    AntiScamEngine.IsProcessing = true
+
+    local buyBtn = frame:FindFirstChild("BuyButton")
+    local itemBtn = frame:FindFirstChild("Frame")
+    local itemName = itemBtn and itemBtn:FindFirstChild("ItemName") and itemBtn.ItemName.Text or "Unknown"
+    local amountLabel = buyBtn and buyBtn:FindFirstChild("List") and buyBtn.List:FindFirstChild("Amount")
+
+    if not buyBtn or not amountLabel then
+        AntiScamEngine.IsProcessing = false
+        return
+    end
+
+    local currentPrice = Util.ParsePrice(amountLabel.Text)
+    local detectedCategory = PlazaEngine.DetectCategory(frame, itemName)
+    local itemRap = PlazaEngine.GetRapValue(itemName, detectedCategory, currentPrice)
+
+    -- JIKA HARGA DI ATAS BATAS (Scammer menaikkan ke 11.000 atau jebakan):
+    if currentPrice > AntiScamEngine.Config.MaxBuyPrice then
+        warn(string.format("🛡️ [SCAM BLOCKED] Scammer ubah harga jadi %d! Batal beli!", currentPrice))
+        AntiScamEngine.IsProcessing = false
+        return
+    end
+
+    -- JIKA HARGA AMAN (1 s/d MaxBuyPrice) & ITEM BERHARGA:
+    if currentPrice <= AntiScamEngine.Config.MaxBuyPrice and currentPrice > 0 then
+        if itemRap >= AntiScamEngine.Config.MinItemRap or itemRap == 0 then
+            print(string.format("⚡ [ANTI-SCAM SNIPE] Merebut %s seharga %d token! (RAP: %d)", itemName, currentPrice, itemRap))
+
+            pcall(function()
+                if firesignal then
+                    firesignal(buyBtn.Activated)
+                    firesignal(buyBtn.MouseButton1Click)
+                end
+                if getconnections then
+                    for _, conn in ipairs(getconnections(buyBtn.MouseButton1Click)) do
+                        conn:Fire()
+                    end
+                    for _, conn in ipairs(getconnections(buyBtn.Activated)) do
+                        conn:Fire()
+                    end
+                end
+            end)
+
+            Util.Notify("⚡ SNIPE DIKIRIM!", string.format("Mencoba merebut %s (%d token)!", itemName, currentPrice))
+            AntiScamEngine.SendDiscordVictory(itemName, currentPrice, itemRap, sellerName)
+            task.wait(0.5)
+        end
+    end
+
+    AntiScamEngine.IsProcessing = false
+end
+
+function AntiScamEngine.HookBooth(scrollList, sellerName)
+    for _, conn in ipairs(AntiScamEngine.ConnectedSignals) do
+        pcall(function() conn:Disconnect() end)
+    end
+    AntiScamEngine.ConnectedSignals = {}
+
+    local function HookSlot(slotFrame)
+        if not slotFrame:IsA("Frame") or slotFrame.Name == "Frame" then return end
+
+        local buyBtn = slotFrame:FindFirstChild("BuyButton")
+        local list = buyBtn and buyBtn:FindFirstChild("List")
+        local amountLabel = list and list:FindFirstChild("Amount")
+
+        AntiScamEngine.AttemptPurchase(slotFrame, sellerName)
+
+        if amountLabel then
+            local conn = amountLabel:GetPropertyChangedSignal("Text"):Connect(function()
+                if AntiScamEngine.Config.IsActive then
+                    AntiScamEngine.AttemptPurchase(slotFrame, sellerName)
+                end
+            end)
+            table.insert(AntiScamEngine.ConnectedSignals, conn)
+        end
+    end
+
+    for _, child in ipairs(scrollList:GetChildren()) do
+        HookSlot(child)
+    end
+
+    local addConn = scrollList.ChildAdded:Connect(function(newChild)
+        if AntiScamEngine.Config.IsActive then
+            task.wait(0.01)
+            HookSlot(newChild)
+        end
+    end)
+    table.insert(AntiScamEngine.ConnectedSignals, addConn)
+end
+
 -- [6] MODULE: TAMPILAN MODERN DELTA TOUCH UI
 local UI = {}
 
@@ -1027,15 +1211,16 @@ function UI.Build()
         b.TextColor3 = Color3.fromRGB(148, 163, 184)
         b.Text = txt
         b.Font = Enum.Font.GothamBold
-        b.TextSize = 10
+        b.TextSize = 9.5
         b.Parent = tabBar
         Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
         return b
     end
 
-    local tabDeals = makeTab("💎 Deals (0)", 0, 0.33)
-    local tabHunt = makeTab("🎯 Cari Pedang", 0.33, 0.33)
-    local tabHop = makeTab("🌐 Server Hop", 0.66, 0.34)
+    local tabDeals = makeTab("💎 Deals (0)", 0, 0.25)
+    local tabHunt = makeTab("🎯 Cari", 0.25, 0.25)
+    local tabHop = makeTab("🌐 Hop", 0.50, 0.25)
+    local tabAntiScam = makeTab("🛡️ Anti-Scam", 0.75, 0.25)
 
     -- CONTAINER KONTEN
     local content = Instance.new("Frame")
@@ -1435,15 +1620,192 @@ function UI.Build()
             pcall(function()
                 if autoHop5MinSub and autoHop5MinSub.Parent then
                     if PlazaEngine.AutoHop5Min then
-                        local rem = PlazaEngine.RemainingHopSeconds or 0
-                        local mins = math.floor(rem / 60)
-                        local secs = rem % 60
-                        autoHop5MinSub.Text = string.format("Hop Server dalam: %02d:%02d", mins, secs)
+                        if AntiScamEngine and AntiScamEngine.Config.IsActive then
+                            autoHop5MinSub.Text = "⏸️ Dipause (Anti-Scam Sedang Aktif)"
+                            autoHop5MinSub.TextColor3 = Color3.fromRGB(244, 63, 94)
+                        else
+                            local rem = PlazaEngine.RemainingHopSeconds or 0
+                            local mins = math.floor(rem / 60)
+                            local secs = rem % 60
+                            autoHop5MinSub.Text = string.format("Hop Server dalam: %02d:%02d", mins, secs)
+                            autoHop5MinSub.TextColor3 = Color3.fromRGB(56, 189, 248)
+                        end
                     else
                         autoHop5MinSub.Text = "Auto-Hop Dimatikan (Manual)"
+                        autoHop5MinSub.TextColor3 = Color3.fromRGB(148, 163, 184)
                     end
                 end
             end)
+        end
+    end)
+
+    -- [PANEL 4: ANTI-SCAM FAST SNIPER & TRAP SHIELD]
+    local paneAntiScam = Instance.new("Frame")
+    paneAntiScam.Size = UDim2.new(1, 0, 1, 0)
+    paneAntiScam.BackgroundTransparency = 1
+    paneAntiScam.Visible = false
+    paneAntiScam.Parent = content
+
+    -- Status Target Booth
+    local targetCard = Instance.new("Frame")
+    targetCard.Size = UDim2.new(1, 0, 0, 32)
+    targetCard.Position = UDim2.new(0, 0, 0, 2)
+    targetCard.BackgroundColor3 = Color3.fromRGB(18, 26, 46)
+    targetCard.Parent = paneAntiScam
+    Instance.new("UICorner", targetCard).CornerRadius = UDim.new(0, 6)
+
+    local targetLabel = Instance.new("TextLabel")
+    targetLabel.Size = UDim2.new(1, -12, 1, 0)
+    targetLabel.Position = UDim2.new(0, 8, 0, 0)
+    targetLabel.BackgroundTransparency = 1
+    targetLabel.Text = "Target Booth: Belum Dikunci"
+    targetLabel.TextColor3 = Color3.fromRGB(203, 213, 225)
+    targetLabel.Font = Enum.Font.GothamBold
+    targetLabel.TextSize = 10
+    targetLabel.TextXAlignment = Enum.TextXAlignment.Left
+    targetLabel.Parent = targetCard
+
+    -- Tombol Kunci Booth
+    local btnLock = Instance.new("TextButton")
+    btnLock.Size = UDim2.new(1, 0, 0, 32)
+    btnLock.Position = UDim2.new(0, 0, 0, 38)
+    btnLock.BackgroundColor3 = Color3.fromRGB(37, 99, 235)
+    btnLock.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btnLock.Text = "🔒 KUNCI BOOTH YANG SEDANG DIBUKA"
+    btnLock.Font = Enum.Font.GothamBold
+    btnLock.TextSize = 10
+    btnLock.Parent = paneAntiScam
+    Instance.new("UICorner", btnLock).CornerRadius = UDim.new(0, 6)
+
+    -- Container Batas Harga Beli
+    local priceBoxContainer = Instance.new("Frame")
+    priceBoxContainer.Size = UDim2.new(1, 0, 0, 46)
+    priceBoxContainer.Position = UDim2.new(0, 0, 0, 74)
+    priceBoxContainer.BackgroundColor3 = Color3.fromRGB(18, 26, 46)
+    priceBoxContainer.Parent = paneAntiScam
+    Instance.new("UICorner", priceBoxContainer).CornerRadius = UDim.new(0, 6)
+
+    local lblPTitle = Instance.new("TextLabel")
+    lblPTitle.Size = UDim2.new(0.65, -10, 0, 22)
+    lblPTitle.Position = UDim2.new(0, 8, 0, 3)
+    lblPTitle.BackgroundTransparency = 1
+    lblPTitle.TextColor3 = Color3.fromRGB(241, 245, 249)
+    lblPTitle.Text = "Max Beli (Anti-Kecolongan):"
+    lblPTitle.Font = Enum.Font.GothamBold
+    lblPTitle.TextSize = 9.5
+    lblPTitle.TextXAlignment = Enum.TextXAlignment.Left
+    lblPTitle.Parent = priceBoxContainer
+
+    local priceBox = Instance.new("TextBox")
+    priceBox.Size = UDim2.new(0.35, -6, 0, 22)
+    priceBox.Position = UDim2.new(0.65, 0, 0, 3)
+    priceBox.BackgroundColor3 = Color3.fromRGB(30, 41, 59)
+    priceBox.TextColor3 = Color3.fromRGB(52, 211, 153)
+    priceBox.Text = tostring(AntiScamEngine.Config.MaxBuyPrice)
+    priceBox.Font = Enum.Font.GothamBold
+    priceBox.TextSize = 10.5
+    priceBox.ClearTextOnFocus = false
+    priceBox.Parent = priceBoxContainer
+    Instance.new("UICorner", priceBox).CornerRadius = UDim.new(0, 4)
+
+    local lblPDesc = Instance.new("TextLabel")
+    lblPDesc.Size = UDim2.new(1, -12, 0, 16)
+    lblPDesc.Position = UDim2.new(0, 8, 0, 26)
+    lblPDesc.BackgroundTransparency = 1
+    lblPDesc.TextColor3 = Color3.fromRGB(148, 163, 184)
+    lblPDesc.Text = "⚠️ Jika harga > batas ini, pembelian BATAL INSTAN 0 ms!"
+    lblPDesc.Font = Enum.Font.Gotham
+    lblPDesc.TextSize = 8
+    lblPDesc.TextXAlignment = Enum.TextXAlignment.Left
+    lblPDesc.Parent = priceBoxContainer
+
+    priceBox.FocusLost:Connect(function()
+        local val = tonumber(priceBox.Text)
+        if val and val > 0 then
+            AntiScamEngine.Config.MaxBuyPrice = val
+            Util.Notify("Batas Harga Diubah", "Maksimal beli diset: " .. val .. " token")
+        else
+            priceBox.Text = tostring(AntiScamEngine.Config.MaxBuyPrice)
+        end
+    end)
+
+    -- Tombol Toggle Aktif/Mati
+    local btnToggleAntiScam = Instance.new("TextButton")
+    btnToggleAntiScam.Size = UDim2.new(1, 0, 0, 36)
+    btnToggleAntiScam.Position = UDim2.new(0, 0, 0, 124)
+    btnToggleAntiScam.BackgroundColor3 = Color3.fromRGB(239, 68, 68)
+    btnToggleAntiScam.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btnToggleAntiScam.Text = "⚡ AKTIFKAN ANTI-SCAM SNIPER (OFF)"
+    btnToggleAntiScam.Font = Enum.Font.GothamBold
+    btnToggleAntiScam.TextSize = 10
+    btnToggleAntiScam.Parent = paneAntiScam
+    Instance.new("UICorner", btnToggleAntiScam).CornerRadius = UDim.new(0, 6)
+
+    -- Kotak Panduan Ringkas
+    local guideBox = Instance.new("Frame")
+    guideBox.Size = UDim2.new(1, 0, 0, 62)
+    guideBox.Position = UDim2.new(0, 0, 0, 164)
+    guideBox.BackgroundColor3 = Color3.fromRGB(18, 26, 46)
+    guideBox.Parent = paneAntiScam
+    Instance.new("UICorner", guideBox).CornerRadius = UDim.new(0, 6)
+
+    local guideText = Instance.new("TextLabel")
+    guideText.Size = UDim2.new(1, -14, 1, -8)
+    guideText.Position = UDim2.new(0, 7, 0, 4)
+    guideText.BackgroundTransparency = 1
+    guideText.TextColor3 = Color3.fromRGB(203, 213, 225)
+    guideText.Text = "💡 <b>Cara Melawan Switcheroo Scammer:</b>\n1. Berdiri di depan booth pelaku & buka booth-nya.\n2. Klik <b>'KUNCI BOOTH'</b> lalu klik <b>'AKTIFKAN'</b>.\n3. Auto-Hop otomatis dipause saat fitur ini ON!"
+    guideText.RichText = true
+    guideText.Font = Enum.Font.Gotham
+    guideText.TextSize = 8.5
+    guideText.TextXAlignment = Enum.TextXAlignment.Left
+    guideText.TextYAlignment = Enum.TextYAlignment.Top
+    guideText.TextWrapped = true
+    guideText.Parent = guideBox
+
+    -- Event Listener Kunci Booth
+    btnLock.MouseButton1Click:Connect(function()
+        local pG = LocalPlayer:FindFirstChild("PlayerGui")
+        local boothGui = pG and pG:FindFirstChild("Booth")
+        local playersBooth = boothGui and boothGui:FindFirstChild("PlayersBooth")
+        local scrollList = playersBooth and playersBooth:FindFirstChild("ScrollingList")
+
+        if not playersBooth or not scrollList or not playersBooth.Visible then
+            Util.Notify("⚠️ Gagal Kunci", "Buka dulu booth scammer di depanmu secara manual!")
+            return
+        end
+
+        local seller = "Unknown"
+        local top = playersBooth:FindFirstChild("Top")
+        if top and top:FindFirstChild("PlayerName") then
+            seller = top.PlayerName.Text:gsub("'s Booth", ""):match("^%s*(.-)%s*$") or "Unknown"
+        end
+
+        AntiScamEngine.Config.LockedBoothName = seller
+        AntiScamEngine.Config.TargetBooth = scrollList
+        targetLabel.Text = "Target Booth: @" .. seller
+        targetLabel.TextColor3 = Color3.fromRGB(52, 211, 153)
+
+        AntiScamEngine.HookBooth(scrollList, seller)
+        Util.Notify("🔒 Booth Terkunci!", "Berhasil mengunci booth @" .. seller .. "!")
+    end)
+
+    -- Event Listener Toggle On/Off
+    btnToggleAntiScam.MouseButton1Click:Connect(function()
+        if not AntiScamEngine.Config.TargetBooth then
+            Util.Notify("⚠️ Belum Kunci Booth", "Buka booth target lalu klik 'KUNCI BOOTH' dulu!")
+            return
+        end
+
+        AntiScamEngine.Config.IsActive = not AntiScamEngine.Config.IsActive
+        if AntiScamEngine.Config.IsActive then
+            btnToggleAntiScam.BackgroundColor3 = Color3.fromRGB(16, 185, 129)
+            btnToggleAntiScam.Text = "⚡ ANTI-SCAM SNIPER AKTIF (ON)"
+            Util.Notify("🛡️ AKTIF!", "Memantau booth @" .. AntiScamEngine.Config.LockedBoothName .. " secara real-time!")
+        else
+            btnToggleAntiScam.BackgroundColor3 = Color3.fromRGB(239, 68, 68)
+            btnToggleAntiScam.Text = "⚡ AKTIFKAN ANTI-SCAM SNIPER (OFF)"
+            Util.Notify("Mati", "Anti-scam sniper dinonaktifkan.")
         end
     end)
 
@@ -1455,10 +1817,13 @@ function UI.Build()
         tabHunt.TextColor3 = Color3.fromRGB(148, 163, 184)
         tabHop.BackgroundColor3 = Color3.fromRGB(24, 32, 53)
         tabHop.TextColor3 = Color3.fromRGB(148, 163, 184)
+        tabAntiScam.BackgroundColor3 = Color3.fromRGB(24, 32, 53)
+        tabAntiScam.TextColor3 = Color3.fromRGB(148, 163, 184)
 
         paneDeals.Visible = false
         paneHunt.Visible = false
         paneHop.Visible = false
+        paneAntiScam.Visible = false
 
         activeBtn.BackgroundColor3 = Color3.fromRGB(99, 102, 241)
         activeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1468,6 +1833,7 @@ function UI.Build()
     tabDeals.MouseButton1Click:Connect(function() setTab(tabDeals, paneDeals) end)
     tabHunt.MouseButton1Click:Connect(function() setTab(tabHunt, paneHunt) end)
     tabHop.MouseButton1Click:Connect(function() setTab(tabHop, paneHop) end)
+    tabAntiScam.MouseButton1Click:Connect(function() setTab(tabAntiScam, paneAntiScam) end)
     setTab(tabDeals, paneDeals)
 
     -- TOMBOL SCAN HANDLER
@@ -1509,7 +1875,7 @@ end)
 task.spawn(function()
     while true do
         task.wait(1)
-        if PlazaEngine.AutoHop5Min then
+        if PlazaEngine.AutoHop5Min and not (AntiScamEngine and AntiScamEngine.Config.IsActive) then
             PlazaEngine.RemainingHopSeconds = (PlazaEngine.RemainingHopSeconds or 300) - 1
             if PlazaEngine.RemainingHopSeconds <= 0 then
                 Util.Notify("🌐 Auto-Hop (5 Menit)", "Waktu 5 menit tercapai! Melompat ke server Trade Plaza baru...", true)
