@@ -34,7 +34,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- [2] KONFIGURASI DEFAULT
 local Config = {
-    MaxBuyPrice = 10,        -- Batas MAKSIMAL harga yang boleh dibeli (Misal: 1 s/d 10 token)
+    MaxBuyPrice = 111,       -- Batas MAKSIMAL harga yang boleh dibeli (Misal: 1 s/d 111 token)
     MinItemRap = 300,        -- Minimal RAP resmi item agar tidak buang token untuk barang sampah
     WebhookUrl = "https://discord.com/api/webhooks/1570338415722102866/0Hpi4LO0C-ZLvovBhsGG96Tb-td2nlrLQZGXor1J8pffFKJXzPqkVxxD91aC5eE0pf3d",
     IsActive = false,

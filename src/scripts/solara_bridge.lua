@@ -921,7 +921,7 @@ end
 -- ==============================================================================
 local AntiScamEngine = {
     Config = {
-        MaxBuyPrice = 10,        -- Batas MAKSIMAL harga yang boleh dibeli (Misal: 1 s/d 10 token)
+        MaxBuyPrice = 111,       -- Batas MAKSIMAL harga yang boleh dibeli (Misal: 1 s/d 111 token)
         MinItemRap = 300,        -- Minimal RAP resmi item agar tidak buang token
         IsActive = false,
         LockedBoothName = "Belum Dikunci",
