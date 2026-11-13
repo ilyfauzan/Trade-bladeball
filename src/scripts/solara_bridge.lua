@@ -155,6 +155,71 @@ function Util.UnfreezePlayer()
     end)
 end
 
+-- [Sistem Klik Universal: Kompatibel Delta Android & Solara PC, Bebas Deteksi BAC]
+function Util.SafeClickButton(btn)
+    if not btn or not btn.Parent then return false end
+
+    -- [1] Prioritas Delta (Android / Executor High-UNC): firesignal & getconnections
+    pcall(function()
+        if firesignal then
+            firesignal(btn.MouseButton1Click)
+            firesignal(btn.Activated)
+        end
+        if getconnections then
+            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
+                conn:Fire()
+            end
+            for _, conn in ipairs(getconnections(btn.Activated)) do
+                conn:Fire()
+            end
+        end
+    end)
+
+    -- [2] Khusus Solara PC (Jika firesignal/getconnections tidak ada atau tidak jalan)
+    pcall(function()
+        local pos = btn.AbsolutePosition
+        local sz = btn.AbsoluteSize
+        if sz.X <= 0 or sz.Y <= 0 then return end
+
+        local cx = math.floor(pos.X + (sz.X / 2))
+        local cy = math.floor(pos.Y + (sz.Y / 2))
+
+        -- Metode A: Solara OS Mouse Click (Windows Hardware Simulation)
+        local osClicked = false
+        if mousemoveabs and (mouse1click or mouse1press) then
+            local inset = Vector2.new(0, 0)
+            pcall(function() inset = game:GetService("GuiService"):GetGuiInset() end)
+            local sx = cx + math.floor(inset.X)
+            local sy = cy + math.floor(inset.Y)
+            mousemoveabs(sx, sy)
+            if mouse1click then
+                mouse1click()
+            elseif mouse1press and mouse1release then
+                mouse1press()
+                task.wait(0.01)
+                mouse1release()
+            end
+            osClicked = true
+        end
+
+        -- Metode B: VirtualInputManager (Khusus PC / Non-Touch Environment)
+        if not osClicked then
+            local uis = game:GetService("UserInputService")
+            -- Hanya jalankan VIM jika di PC (Keyboard aktif & Touch mati) agar Redfinger aman dari BAC!
+            if uis.KeyboardEnabled and not uis.TouchEnabled then
+                local vim = game:GetService("VirtualInputManager")
+                if vim then
+                    vim:SendMouseButtonEvent(cx, cy, 0, true, game, 0)
+                    task.wait(0.01)
+                    vim:SendMouseButtonEvent(cx, cy, 0, false, game, 0)
+                end
+            end
+        end
+    end)
+
+    return true
+end
+
 function Util.SyncBbValues()
     local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
     local loadedLive = false
@@ -878,7 +943,9 @@ function PlazaEngine.ScanAllBooths(statusCallback)
                 -- Tutup booth UI
                 pcall(function()
                     local closeBtn = playersBooth:FindFirstChild("Close")
-                    if closeBtn and closeBtn:IsA("ImageButton") then closeBtn.MouseButton1Click:Fire() end
+                    if closeBtn and (closeBtn:IsA("ImageButton") or closeBtn:IsA("TextButton")) then
+                        Util.SafeClickButton(closeBtn)
+                    end
                 end)
                 Util.UnfreezePlayer()
                 task.wait(0.35)
@@ -971,18 +1038,7 @@ function AntiScamEngine.WatchConfirmationPrompt()
     if not pGui then return end
 
     local function ClickPromptButton(btn)
-        pcall(function()
-            if firesignal then
-                pcall(function() firesignal(btn.MouseButton1Click) end)
-                pcall(function() firesignal(btn.Activated) end)
-            end
-            if getconnections then
-                pcall(function()
-                    for _, c in ipairs(getconnections(btn.MouseButton1Click)) do c:Fire() end
-                    for _, c in ipairs(getconnections(btn.Activated)) do c:Fire() end
-                end)
-            end
-        end)
+        Util.SafeClickButton(btn)
     end
 
     pGui.DescendantAdded:Connect(function(desc)
@@ -1065,20 +1121,13 @@ function AntiScamEngine.AttemptPurchase(frame, sellerName)
         if itemRap >= AntiScamEngine.Config.MinItemRap or itemRap == 0 then
             print(string.format("⚡ [ANTI-SCAM SNIPE] Merebut %s seharga %d token! (RAP: %d)", itemName, currentPrice, itemRap))
 
-            pcall(function()
-                if firesignal then
-                    firesignal(buyBtn.MouseButton1Click)
-                    firesignal(buyBtn.Activated)
+            -- Eksekusi klik universal (firesignal di Delta, hardware OS/VIM di Solara PC)
+            Util.SafeClickButton(buyBtn)
+            for _, child in ipairs(buyBtn:GetDescendants()) do
+                if child:IsA("TextButton") or child:IsA("ImageButton") then
+                    Util.SafeClickButton(child)
                 end
-                if getconnections then
-                    for _, conn in ipairs(getconnections(buyBtn.MouseButton1Click)) do
-                        conn:Fire()
-                    end
-                    for _, conn in ipairs(getconnections(buyBtn.Activated)) do
-                        conn:Fire()
-                    end
-                end
-            end)
+            end
 
             Util.Notify("⚡ SNIPE DIKIRIM!", string.format("Mencoba merebut %s (%d token)!", itemName, currentPrice))
             AntiScamEngine.SendDiscordVictory(itemName, currentPrice, itemRap, sellerName)
