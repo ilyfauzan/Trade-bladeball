@@ -220,6 +220,34 @@ function Util.SafeClickButton(btn)
     return true
 end
 
+-- [Sistem Auto-Execute Teleport Universal: Kompatibel Delta Android, Redfinger, Emulator & PC]
+function Util.QueueOnTeleport(code)
+    local fn = queue_on_teleport 
+        or queueonteleport 
+        or (syn and syn.queue_on_teleport) 
+        or (fluxus and fluxus.queue_on_teleport)
+        or (getgenv and (getgenv().queue_on_teleport or getgenv().queueonteleport))
+
+    if fn then
+        pcall(function()
+            fn(code)
+        end)
+        return true
+    end
+    return false
+end
+
+-- Deteksi kegagalan teleportasi (biar tidak bengong jika server penuh di emulator)
+pcall(function()
+    TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
+        warn("⚠️ Teleport gagal (" .. tostring(errorMessage) .. "). Mencoba hop ulang dalam 3 detik...")
+        task.wait(3)
+        if Navigator and Navigator.ServerHop then
+            Navigator.ServerHop(5, 25)
+        end
+    end)
+end)
+
 function Util.SyncBbValues()
     local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
     local loadedLive = false
@@ -449,13 +477,16 @@ function Navigator.ServerHop(minPlayers, maxPlayers)
     maxPlayers = maxPlayers or 26
     Util.Notify("🌐 Server Hop", "Mencari server Trade Plaza yang aktif...", true)
 
-    -- [DELTA AUTO-EXECUTE]: Titipkan script ke executor agar otomatis berjalan di server baru!
-    local queue = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
-    if queue then
+    -- [AUTO-EXECUTE TELEPORT UNIVERSAL]: Kompatibel Emulator PC & Redfinger
+    -- Menunggu game:IsLoaded() dan PlayerGui siap agar di Emulator PC tidak crash / hilang skripnya
+    local hopPayload = [[
+        repeat task.wait(0.5) until game:IsLoaded()
+        task.wait(1.5)
         pcall(function()
-            queue('loadstring(game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/scripts/delta_plaza_sniper.lua"))()')
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/scripts/delta_plaza_sniper.lua"))()
         end)
-    end
+    ]]
+    Util.QueueOnTeleport(hopPayload)
 
     local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
     if req then
@@ -508,6 +539,7 @@ function Navigator.ServerHop(minPlayers, maxPlayers)
                         end
                     end)
 
+                    Util.QueueOnTeleport(hopPayload)
                     TeleportService:TeleportToPlaceInstance(PlaceId, targetServer, LocalPlayer)
                     return
                 end
@@ -515,6 +547,7 @@ function Navigator.ServerHop(minPlayers, maxPlayers)
         end
     end
 
+    Util.QueueOnTeleport(hopPayload)
     TeleportService:Teleport(PlaceId, LocalPlayer)
 end
 
@@ -1960,6 +1993,21 @@ task.spawn(function()
                 task.wait(2)
                 Navigator.ServerHop(6, 26)
                 break
+            end
+        end
+    end
+end)
+
+-- [3] Auto-Install ke Folder AutoExecute Executor jika tersedia (Redfinger & Emulator)
+pcall(function()
+    if writefile then
+        local loaderPayload = 'repeat task.wait(0.5) until game:IsLoaded()\ntask.wait(1.5)\npcall(function()\n    loadstring(game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/scripts/delta_plaza_sniper.lua"))()\nend)'
+        local candidates = {"autoexecute", "AutoExecute", "delta/autoexecute", "Delta/autoexecute", "scripts/autoexecute"}
+        for _, dir in ipairs(candidates) do
+            if isfolder and isfolder(dir) then
+                pcall(function()
+                    writefile(dir .. "/bb_plaza_sniper.lua", loaderPayload)
+                end)
             end
         end
     end
