@@ -878,7 +878,25 @@ function PlazaEngine.ScanAllBooths(statusCallback)
                 -- Tutup booth UI
                 pcall(function()
                     local closeBtn = playersBooth:FindFirstChild("Close")
-                    if closeBtn and closeBtn:IsA("ImageButton") then closeBtn.MouseButton1Click:Fire() end
+                    if closeBtn and (closeBtn:IsA("ImageButton") or closeBtn:IsA("TextButton")) then
+                        if firesignal then
+                            pcall(function() firesignal(closeBtn.MouseButton1Click) end)
+                            pcall(function() firesignal(closeBtn.Activated) end)
+                        end
+                        if getconnections then
+                            pcall(function()
+                                for _, c in ipairs(getconnections(closeBtn.MouseButton1Click)) do c:Fire() end
+                                for _, c in ipairs(getconnections(closeBtn.Activated)) do c:Fire() end
+                            end)
+                        end
+                        pcall(function()
+                            local vim = game:GetService("VirtualInputManager")
+                            local pos = closeBtn.AbsolutePosition
+                            local sz = closeBtn.AbsoluteSize
+                            vim:SendMouseButtonEvent(pos.X + sz.X/2, pos.Y + sz.Y/2, 0, true, game, 0)
+                            vim:SendMouseButtonEvent(pos.X + sz.X/2, pos.Y + sz.Y/2, 0, false, game, 0)
+                        end)
+                    end
                 end)
                 Util.UnfreezePlayer()
                 task.wait(0.35)
@@ -1031,6 +1049,18 @@ function AntiScamEngine.WatchConfirmationPrompt()
                 local cd = btn:FindFirstChildWhichIsA("ClickDetector")
                 if cd then pcall(function() fireclickdetector(cd) end) end
             end
+            -- Metode 5: VirtualInputManager (Native PC Roblox & Solara Backup)
+            pcall(function()
+                local vim = game:GetService("VirtualInputManager")
+                local pos = btn.AbsolutePosition
+                local sz = btn.AbsoluteSize
+                if sz.X > 0 and sz.Y > 0 then
+                    local cx = pos.X + (sz.X / 2)
+                    local cy = pos.Y + (sz.Y / 2)
+                    vim:SendMouseButtonEvent(cx, cy, 0, true, game, 0)
+                    vim:SendMouseButtonEvent(cx, cy, 0, false, game, 0)
+                end
+            end)
         end)
     end
 
@@ -1210,6 +1240,19 @@ function AntiScamEngine.AttemptPurchase(frame, sellerName)
                             end
                         end
                     end
+                end
+            end)
+
+            -- METODE 5: VirtualInputManager (Native PC Roblox & Solara Backup)
+            pcall(function()
+                local vim = game:GetService("VirtualInputManager")
+                local pos = buyBtn.AbsolutePosition
+                local sz = buyBtn.AbsoluteSize
+                if sz.X > 0 and sz.Y > 0 then
+                    local cx = pos.X + (sz.X / 2)
+                    local cy = pos.Y + (sz.Y / 2)
+                    vim:SendMouseButtonEvent(cx, cy, 0, true, game, 0)
+                    vim:SendMouseButtonEvent(cx, cy, 0, false, game, 0)
                 end
             end)
 
