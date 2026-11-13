@@ -915,21 +915,57 @@ function PlazaEngine.ScanAllBooths(statusCallback)
 end
 
 -- ==============================================================================
--- [5.5] MODULE: ANTI-SCAM FAST SNIPER & TRAP SHIELD
--- Melawan pelaku "Switcheroo / Bait & Switch Scam" di Trade Plaza yang sengaja
--- pasang 1 token lalu secepat kilat menaikkan ke 11.000 token untuk menjebak pembeli.
+-- [5.5] MODULE: ANTI-SCAM ULTRA-FAST SNIPER & TRAP SHIELD v2.0
+-- Melawan pelaku "Switcheroo / Bait & Switch Scam" di Trade Plaza.
+-- v2.0: TURBO MODE - bypass UI click, cari RemoteEvent langsung,
+--       auto-confirm 0ms, RenderStepped scan setiap frame.
 -- ==============================================================================
+local RunService = game:GetService("RunService")
+
 local AntiScamEngine = {
     Config = {
-        MaxBuyPrice = 111,       -- Batas MAKSIMAL harga yang boleh dibeli (Misal: 1 s/d 111 token)
+        MaxBuyPrice = 111,       -- Batas MAKSIMAL harga yang boleh dibeli (1 s/d 111 token)
         MinItemRap = 300,        -- Minimal RAP resmi item agar tidak buang token
         IsActive = false,
         LockedBoothName = "Belum Dikunci",
         TargetBooth = nil
     },
     IsProcessing = false,
-    ConnectedSignals = {}
+    ConnectedSignals = {},
+    PurchaseRemotes = {},       -- Cache RemoteEvent/RemoteFunction untuk pembelian booth
+    LastSnipeTime = 0           -- Cooldown anti-spam (agar tidak spam fire remote)
 }
+
+-- [TURBO 1]: Cari semua RemoteEvent/RemoteFunction terkait pembelian booth di game
+function AntiScamEngine.FindPurchaseRemotes()
+    AntiScamEngine.PurchaseRemotes = {}
+    pcall(function()
+        local rs = game:GetService("ReplicatedStorage")
+        local keywords = {"buy", "purchase", "booth", "trade", "market", "shop", "confirm", "accept"}
+
+        local function ScanContainer(container)
+            if not container then return end
+            for _, child in ipairs(container:GetDescendants()) do
+                if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
+                    local n = child.Name:lower()
+                    for _, kw in ipairs(keywords) do
+                        if n:find(kw) then
+                            table.insert(AntiScamEngine.PurchaseRemotes, child)
+                            print("🔍 [REMOTE FOUND]", child:GetFullName(), "->", child.ClassName)
+                            break
+                        end
+                    end
+                end
+            end
+        end
+
+        ScanContainer(rs)
+        -- Juga scan di Packages, Modules, dsb
+        pcall(function() ScanContainer(game:GetService("Players").LocalPlayer:FindFirstChild("PlayerScripts")) end)
+    end)
+    print(string.format("🔍 Ditemukan %d remote terkait pembelian.", #AntiScamEngine.PurchaseRemotes))
+end
+task.spawn(AntiScamEngine.FindPurchaseRemotes)
 
 function AntiScamEngine.SendDiscordVictory(itemName, price, rap, seller)
     local targetWebhook = DISCORD_WEBHOOK_URL
@@ -942,7 +978,7 @@ function AntiScamEngine.SendDiscordVictory(itemName, price, rap, seller)
                 username = "Blade Ball Anti-Scam Counter",
                 embeds = {{
                     title = "🎯 SCAMMER TERTIPU! ITEM 1 TOKEN BERHASIL DIREBUT!",
-                    color = 5763719, -- Hijau Neon
+                    color = 5763719,
                     description = "Berhasil memotong scammer switcheroo sebelum dia sempat mencabut itemnya!",
                     fields = {
                         { name = "🗡️ Nama Item", value = tostring(itemName), inline = true },
@@ -965,50 +1001,148 @@ function AntiScamEngine.SendDiscordVictory(itemName, price, rap, seller)
     end)
 end
 
--- Menangani pop-up konfirmasi game (jika game memunculkan prompt "Yakin beli?")
+-- [TURBO 2]: Ultra-aggressive confirmation prompt killer
+-- Menghancurkan pop-up konfirmasi dalam 0ms menggunakan multi-metode
 function AntiScamEngine.WatchConfirmationPrompt()
     local pGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not pGui then return end
 
+    -- Fungsi agresif untuk langsung klik tombol secepat mungkin
+    local function FireButtonInstant(btn)
+        pcall(function()
+            -- Metode 1: firesignal (tercepat)
+            if firesignal then
+                pcall(function() firesignal(btn.MouseButton1Click) end)
+                pcall(function() firesignal(btn.Activated) end)
+            end
+            -- Metode 2: getconnections (backup)
+            if getconnections then
+                pcall(function()
+                    for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do conn:Fire() end
+                end)
+                pcall(function()
+                    for _, conn in ipairs(getconnections(btn.Activated)) do conn:Fire() end
+                end)
+            end
+            -- Metode 3: fireclick (beberapa executor)
+            if fireclick then pcall(function() fireclick(btn) end) end
+            -- Metode 4: fireclickdetector
+            if fireclickdetector then
+                local cd = btn:FindFirstChildWhichIsA("ClickDetector")
+                if cd then pcall(function() fireclickdetector(cd) end) end
+            end
+        end)
+    end
+
     pGui.DescendantAdded:Connect(function(desc)
         if not AntiScamEngine.Config.IsActive then return end
 
-        local n = desc.Name:lower()
-        if desc:IsA("TextButton") and (n:find("yes") or n:find("confirm") or n:find("accept") or n:find("buy")) then
-            local parentFrame = desc.Parent
-            local priceInPrompt = 0
-            for _, label in ipairs(parentFrame:GetDescendants()) do
-                if label:IsA("TextLabel") and label.Visible then
-                    local p = Util.ParsePrice(label.Text)
-                    if p > priceInPrompt then priceInPrompt = p end
-                end
-            end
+        -- [STRATEGI A]: Tangkap tombol konfirmasi (Yes/Confirm/Accept/Buy)
+        if desc:IsA("TextButton") or desc:IsA("ImageButton") then
+            local n = desc.Name:lower()
+            local t = ""
+            pcall(function() t = desc.Text:lower() end)
 
-            -- Jika harga di atas batas kita (jebakan 11k):
-            if priceInPrompt > AntiScamEngine.Config.MaxBuyPrice then
-                warn("🚨 SCAM PROMPT DETECTED! Harga jebakan:", priceInPrompt, "-> BATALKAN!")
-                for _, btn in ipairs(parentFrame:GetDescendants()) do
-                    if btn:IsA("TextButton") and (btn.Name:lower():find("no") or btn.Name:lower():find("cancel") or btn.Text:lower():find("cancel") or btn.Text:lower():find("no")) then
-                        pcall(function()
-                            if firesignal then firesignal(btn.Activated or btn.MouseButton1Click) end
-                        end)
-                        break
-                    end
-                end
-                Util.Notify("🛡️ SCAM DIBATALKAN!", "Scammer mencoba menjual di harga " .. Util.FormatNumber(priceInPrompt) .. " token! Dibatalkan otomatis!")
-            elseif priceInPrompt <= AntiScamEngine.Config.MaxBuyPrice and priceInPrompt > 0 then
+            local isConfirm = n:find("yes") or n:find("confirm") or n:find("accept") or n:find("buy")
+                or t:find("yes") or t:find("confirm") or t:find("accept") or t:find("buy")
+            local isCancel = n:find("no") or n:find("cancel") or n:find("decline") or n:find("close")
+                or t:find("no") or t:find("cancel") or t:find("decline") or t:find("close")
+
+            if isConfirm and not isCancel then
+                -- Cek harga di dalam pop-up konfirmasi
+                local parentFrame = desc.Parent
+                local priceInPrompt = 0
                 pcall(function()
-                    if firesignal then firesignal(desc.Activated or desc.MouseButton1Click) end
+                    for _, label in ipairs(parentFrame:GetDescendants()) do
+                        if (label:IsA("TextLabel") or label:IsA("TextBox")) and label.Visible then
+                            local p = Util.ParsePrice(label.Text)
+                            if p > priceInPrompt then priceInPrompt = p end
+                        end
+                    end
                 end)
+
+                if priceInPrompt > AntiScamEngine.Config.MaxBuyPrice and priceInPrompt > 0 then
+                    -- JEBAKAN! Cari tombol cancel dan klik instan
+                    warn("🚨 SCAM PROMPT! Harga jebakan:", priceInPrompt)
+                    pcall(function()
+                        for _, btn in ipairs(parentFrame:GetDescendants()) do
+                            if (btn:IsA("TextButton") or btn:IsA("ImageButton")) then
+                                local bn = btn.Name:lower()
+                                local bt = ""
+                                pcall(function() bt = btn.Text:lower() end)
+                                if bn:find("no") or bn:find("cancel") or bn:find("decline") or bn:find("close")
+                                    or bt:find("no") or bt:find("cancel") or bt:find("decline") or bt:find("close") then
+                                    FireButtonInstant(btn)
+                                    break
+                                end
+                            end
+                        end
+                    end)
+                    Util.Notify("🛡️ SCAM DIBATALKAN!", Util.FormatNumber(priceInPrompt) .. " token DIJEBAK! Auto-cancel!")
+                else
+                    -- HARGA AMAN! Langsung klik konfirmasi 0ms!
+                    FireButtonInstant(desc)
+                end
             end
+        end
+
+        -- [STRATEGI B]: Tangkap FRAME konfirmasi secara keseluruhan
+        -- Jika game menambahkan frame baru (dialog), scan semua tombol di dalamnya
+        if desc:IsA("Frame") or desc:IsA("CanvasGroup") then
+            task.defer(function()
+                pcall(function()
+                    for _, btn in ipairs(desc:GetDescendants()) do
+                        if (btn:IsA("TextButton") or btn:IsA("ImageButton")) then
+                            local n = btn.Name:lower()
+                            local t = ""
+                            pcall(function() t = btn.Text:lower() end)
+                            if n:find("yes") or n:find("confirm") or n:find("accept") or n:find("buy")
+                                or t:find("yes") or t:find("confirm") or t:find("accept") or t:find("buy") then
+                                -- Verifikasi harga lagi
+                                local parentFrame = btn.Parent
+                                local priceCheck = 0
+                                for _, label in ipairs(desc:GetDescendants()) do
+                                    if (label:IsA("TextLabel") or label:IsA("TextBox")) and label.Visible then
+                                        local p = Util.ParsePrice(label.Text)
+                                        if p > priceCheck then priceCheck = p end
+                                    end
+                                end
+                                if priceCheck <= AntiScamEngine.Config.MaxBuyPrice or priceCheck == 0 then
+                                    FireButtonInstant(btn)
+                                elseif priceCheck > AntiScamEngine.Config.MaxBuyPrice then
+                                    -- Cancel jebakan
+                                    for _, cb in ipairs(desc:GetDescendants()) do
+                                        if (cb:IsA("TextButton") or cb:IsA("ImageButton")) then
+                                            local cn = cb.Name:lower()
+                                            local ct = ""
+                                            pcall(function() ct = cb.Text:lower() end)
+                                            if cn:find("no") or cn:find("cancel") or cn:find("decline")
+                                                or ct:find("no") or ct:find("cancel") or ct:find("decline") then
+                                                FireButtonInstant(cb)
+                                                break
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end)
+            end)
         end
     end)
 end
 task.spawn(AntiScamEngine.WatchConfirmationPrompt)
 
+-- [TURBO 3]: Ultra-fast purchase - multi-method simultaneous fire
 function AntiScamEngine.AttemptPurchase(frame, sellerName)
     if AntiScamEngine.IsProcessing then return end
+
+    local now = tick()
+    if (now - AntiScamEngine.LastSnipeTime) < 0.1 then return end -- 100ms cooldown anti-spam
+
     AntiScamEngine.IsProcessing = true
+    AntiScamEngine.LastSnipeTime = now
 
     local buyBtn = frame:FindFirstChild("BuyButton")
     local itemBtn = frame:FindFirstChild("Frame")
@@ -1021,46 +1155,85 @@ function AntiScamEngine.AttemptPurchase(frame, sellerName)
     end
 
     local currentPrice = Util.ParsePrice(amountLabel.Text)
-    local detectedCategory = PlazaEngine.DetectCategory(frame, itemName)
-    local itemRap = PlazaEngine.GetRapValue(itemName, detectedCategory, currentPrice)
 
-    -- JIKA HARGA DI ATAS BATAS (Scammer menaikkan ke 11.000 atau jebakan):
+    -- JIKA HARGA DI ATAS BATAS (Jebakan scammer):
     if currentPrice > AntiScamEngine.Config.MaxBuyPrice then
-        warn(string.format("🛡️ [SCAM BLOCKED] Scammer ubah harga jadi %d! Batal beli!", currentPrice))
         AntiScamEngine.IsProcessing = false
         return
     end
 
-    -- JIKA HARGA AMAN (1 s/d MaxBuyPrice) & ITEM BERHARGA:
+    -- JIKA HARGA AMAN:
     if currentPrice <= AntiScamEngine.Config.MaxBuyPrice and currentPrice > 0 then
-        if itemRap >= AntiScamEngine.Config.MinItemRap or itemRap == 0 then
-            print(string.format("⚡ [ANTI-SCAM SNIPE] Merebut %s seharga %d token! (RAP: %d)", itemName, currentPrice, itemRap))
+        local detectedCategory = PlazaEngine.DetectCategory(frame, itemName)
+        local itemRap = PlazaEngine.GetRapValue(itemName, detectedCategory, currentPrice)
 
+        if itemRap >= AntiScamEngine.Config.MinItemRap or itemRap == 0 then
+            print(string.format("⚡ [TURBO SNIPE] %s @ %d token (RAP: %d)", itemName, currentPrice, itemRap))
+
+            -- METODE 1: Fire semua signal BuyButton (UI Click)
             pcall(function()
                 if firesignal then
-                    firesignal(buyBtn.Activated)
-                    firesignal(buyBtn.MouseButton1Click)
+                    pcall(function() firesignal(buyBtn.MouseButton1Click) end)
+                    pcall(function() firesignal(buyBtn.Activated) end)
+                    pcall(function() firesignal(buyBtn.MouseButton1Down) end)
                 end
+            end)
+
+            -- METODE 2: Fire melalui getconnections (bypass semua handler)
+            pcall(function()
                 if getconnections then
                     for _, conn in ipairs(getconnections(buyBtn.MouseButton1Click)) do
-                        conn:Fire()
+                        pcall(function() conn:Fire() end)
                     end
                     for _, conn in ipairs(getconnections(buyBtn.Activated)) do
-                        conn:Fire()
+                        pcall(function() conn:Fire() end)
                     end
                 end
             end)
 
-            Util.Notify("⚡ SNIPE DIKIRIM!", string.format("Mencoba merebut %s (%d token)!", itemName, currentPrice))
-            AntiScamEngine.SendDiscordVictory(itemName, currentPrice, itemRap, sellerName)
-            task.wait(0.5)
+            -- METODE 3: fireclick (beberapa executor support)
+            pcall(function()
+                if fireclick then fireclick(buyBtn) end
+            end)
+
+            -- METODE 4: Coba klik semua tombol di dalam BuyButton (jika nested)
+            pcall(function()
+                for _, child in ipairs(buyBtn:GetDescendants()) do
+                    if child:IsA("TextButton") or child:IsA("ImageButton") then
+                        if firesignal then
+                            pcall(function() firesignal(child.MouseButton1Click) end)
+                            pcall(function() firesignal(child.Activated) end)
+                        end
+                        if getconnections then
+                            for _, conn in ipairs(getconnections(child.MouseButton1Click)) do
+                                pcall(function() conn:Fire() end)
+                            end
+                        end
+                    end
+                end
+            end)
+
+            Util.Notify("⚡ TURBO SNIPE!", string.format("%s (%d token) -> FIRE!", itemName, currentPrice))
+
+            -- Kirim notifikasi Discord (non-blocking)
+            task.spawn(function()
+                AntiScamEngine.SendDiscordVictory(itemName, currentPrice, itemRap, sellerName)
+            end)
+
+            -- Cooldown sangat singkat (bukan 0.5 detik lagi!)
+            task.defer(function()
+                AntiScamEngine.IsProcessing = false
+            end)
+            return
         end
     end
 
     AntiScamEngine.IsProcessing = false
 end
 
+-- [TURBO 4]: Hook booth dengan RenderStepped scan + event listener ganda
 function AntiScamEngine.HookBooth(scrollList, sellerName)
+    -- Bersihkan koneksi lama
     for _, conn in ipairs(AntiScamEngine.ConnectedSignals) do
         pcall(function() conn:Disconnect() end)
     end
@@ -1073,8 +1246,10 @@ function AntiScamEngine.HookBooth(scrollList, sellerName)
         local list = buyBtn and buyBtn:FindFirstChild("List")
         local amountLabel = list and list:FindFirstChild("Amount")
 
+        -- Langsung coba beli saat ini juga!
         AntiScamEngine.AttemptPurchase(slotFrame, sellerName)
 
+        -- [EVENT 1]: Dengarkan perubahan harga (PropertyChanged)
         if amountLabel then
             local conn = amountLabel:GetPropertyChangedSignal("Text"):Connect(function()
                 if AntiScamEngine.Config.IsActive then
@@ -1083,19 +1258,70 @@ function AntiScamEngine.HookBooth(scrollList, sellerName)
             end)
             table.insert(AntiScamEngine.ConnectedSignals, conn)
         end
+
+        -- [EVENT 2]: Dengarkan perubahan Visibility (item muncul/hilang)
+        pcall(function()
+            local conn2 = slotFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+                if AntiScamEngine.Config.IsActive and slotFrame.Visible then
+                    AntiScamEngine.AttemptPurchase(slotFrame, sellerName)
+                end
+            end)
+            table.insert(AntiScamEngine.ConnectedSignals, conn2)
+        end)
+
+        -- [EVENT 3]: Dengarkan descendant baru di slot (jika konten diganti)
+        pcall(function()
+            local conn3 = slotFrame.DescendantAdded:Connect(function(newDesc)
+                if AntiScamEngine.Config.IsActive then
+                    if newDesc.Name == "Amount" or (newDesc:IsA("TextLabel") and newDesc.Parent and newDesc.Parent.Name == "List") then
+                        task.defer(function()
+                            AntiScamEngine.AttemptPurchase(slotFrame, sellerName)
+                        end)
+                    end
+                end
+            end)
+            table.insert(AntiScamEngine.ConnectedSignals, conn3)
+        end)
     end
 
+    -- Hook semua slot yang sudah ada
     for _, child in ipairs(scrollList:GetChildren()) do
         HookSlot(child)
     end
 
+    -- Hook setiap slot baru TANPA DELAY (task.defer bukan task.wait!)
     local addConn = scrollList.ChildAdded:Connect(function(newChild)
         if AntiScamEngine.Config.IsActive then
-            task.wait(0.01)
-            HookSlot(newChild)
+            task.defer(function()
+                HookSlot(newChild)
+            end)
         end
     end)
     table.insert(AntiScamEngine.ConnectedSignals, addConn)
+
+    -- [TURBO 5]: RenderStepped Heartbeat Monitor - scan SETIAP FRAME untuk perubahan harga
+    local heartbeatConn = RunService.Heartbeat:Connect(function()
+        if not AntiScamEngine.Config.IsActive then return end
+        if AntiScamEngine.IsProcessing then return end
+
+        pcall(function()
+            for _, child in ipairs(scrollList:GetChildren()) do
+                if child:IsA("Frame") and child.Name ~= "Frame" then
+                    local buyBtn = child:FindFirstChild("BuyButton")
+                    local list = buyBtn and buyBtn:FindFirstChild("List")
+                    local amountLabel = list and list:FindFirstChild("Amount")
+                    if amountLabel then
+                        local price = Util.ParsePrice(amountLabel.Text)
+                        if price > 0 and price <= AntiScamEngine.Config.MaxBuyPrice then
+                            AntiScamEngine.AttemptPurchase(child, sellerName)
+                            return -- satu per frame cukup
+                        end
+                    end
+                end
+            end
+        end)
+    end)
+    table.insert(AntiScamEngine.ConnectedSignals, heartbeatConn)
 end
 
 -- [6] MODULE: TAMPILAN MODERN DELTA TOUCH UI
