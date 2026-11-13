@@ -24,8 +24,11 @@ local LocalPlayer = Players.LocalPlayer
 local PlaceId = game.PlaceId
 local JobId = game.JobId
 
--- Discord Webhook untuk notifikasi hasil scan Under-RAP
+-- Discord Webhook untuk notifikasi hasil scan Under-RAP (Channel Utama / Biasa)
 local DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1570338415722102866/0Hpi4LO0C-ZLvovBhsGG96Tb-td2nlrLQZGXor1J8pffFKJXzPqkVxxD91aC5eE0pf3d"
+
+-- Discord Webhook khusus item 10k-20k yang TIDAK under 100+ (Channel Baru)
+local DISCORD_WEBHOOK_10K_20K = "https://discord.com/api/webhooks/1570608955607220284/Qte1Wkn7fMPqyuQVFmyYnCjki_SpRlLdTTthVnswrSjIlDMU_sz162I4xGefaaGvL0Pi"
 
 -- ==============================================================================
 -- [SPECIAL HIGH-DEMAND WATCHLIST / OVER-RAP BUY DEALS]
@@ -253,7 +256,8 @@ function Util.SyncBbValues()
 end
 
 function Util.SendDiscordAlert(deals)
-    if not deals or #deals == 0 or not DISCORD_WEBHOOK_URL or #DISCORD_WEBHOOK_URL == 0 then return end
+    if not deals or #deals == 0 then return end
+    if (not DISCORD_WEBHOOK_URL or #DISCORD_WEBHOOK_URL == 0) and (not DISCORD_WEBHOOK_10K_20K or #DISCORD_WEBHOOK_10K_20K == 0) then return end
     
     local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
     if not req then return end
@@ -273,6 +277,20 @@ function Util.SendDiscordAlert(deals)
                 local isUnder = (d.Profit > 0)
                 local isOver = (d.Profit < 0)
                 local isEven = (d.Profit == 0)
+
+                -- Pemisahan Webhook:
+                -- 1. Jika item 10k-20k dan TIDAK under 100+ (profit < 100), kirim ke channel baru!
+                -- 2. Jika under 100+ (termasuk item 10k-20k under 100+), tetap kirim ke channel biasa!
+                local targetWebhook = DISCORD_WEBHOOK_URL
+                local is10kNonUnder = (d.RAP and d.RAP >= 10000 and d.RAP <= 20000 and d.Profit < 100)
+
+                if is10kNonUnder then
+                    targetWebhook = DISCORD_WEBHOOK_10K_20K
+                end
+
+                if not targetWebhook or #targetWebhook == 0 then
+                    targetWebhook = DISCORD_WEBHOOK_URL
+                end
 
                 -- Tanda pembeda simpel: [UNDER] untuk deal cuan, [10k-20k] untuk item pantauan non-under
                 local badge = isUnder and "🔥 [UNDER]" or "💎 [10k-20k]"
@@ -329,7 +347,7 @@ function Util.SendDiscordAlert(deals)
                 })
 
                 req({
-                    Url = DISCORD_WEBHOOK_URL,
+                    Url = targetWebhook,
                     Method = "POST",
                     Headers = {
                         ["Content-Type"] = "application/json"
