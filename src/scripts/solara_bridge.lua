@@ -337,8 +337,9 @@ function Util.SendDiscordAlert(deals)
                         }
                     },
                     footer = {
-                        text = string.format("Job ID: %s", tostring(JobId))
-                    }
+                        text = string.format("🕒 %s • Job ID: %s", os.date("%H:%M:%S"), tostring(JobId))
+                    },
+                    timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
                 }
 
                 local payload = HttpService:JSONEncode({
