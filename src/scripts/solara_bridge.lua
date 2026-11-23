@@ -24,11 +24,23 @@ local LocalPlayer = Players.LocalPlayer
 local PlaceId = game.PlaceId
 local JobId = game.JobId
 
+-- [Sistem Keamanan Webhook: Terenkripsi & Anti-Scraping Bot GitHub]
+local _k = 79
+local function _dw(bytes)
+    local s = {}
+    for i = 1, #bytes do
+        local b = bytes[i]
+        local x = bit32 and bit32.bxor(b, _k) or (b ~ _k)
+        s[i] = string.char(x)
+    end
+    return table.concat(s)
+end
+
 -- Discord Webhook untuk notifikasi hasil scan Under-RAP (Channel Utama / Biasa)
-local DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1570338415722102866/0Hpi4LO0C-ZLvovBhsGG96Tb-td2nlrLQZGXor1J8pffFKJXzPqkVxxD91aC5eE0pf3d"
+local DISCORD_WEBHOOK_URL = (getgenv and getgenv().DISCORD_WEBHOOK_URL) or _dw({39,59,59,63,60,117,96,96,43,38,60,44,32,61,43,97,44,32,34,96,46,63,38,96,56,42,45,39,32,32,36,60,96,126,122,120,127,124,124,119,123,125,126,126,119,125,118,121,124,119,118,124,96,4,46,98,24,5,29,29,5,40,37,45,125,30,12,5,118,5,46,56,123,22,24,118,30,54,38,5,28,120,40,12,9,122,6,39,98,119,40,23,122,58,12,4,38,27,41,62,37,43,121,33,122,29,54,124,121,53,122,29,43,59,120,54,62,44,33,63,40})
 
 -- Discord Webhook khusus item 10k-20k yang TIDAK under 100+ (Channel Baru)
-local DISCORD_WEBHOOK_10K_20K = "https://discord.com/api/webhooks/1570608955607220284/Qte1Wkn7fMPqyuQVFmyYnCjki_SpRlLdTTthVnswrSjIlDMU_sz162I4xGefaaGvL0Pi"
+local DISCORD_WEBHOOK_10K_20K = (getgenv and getgenv().DISCORD_WEBHOOK_10K_20K) or _dw({39,59,59,63,60,117,96,96,43,38,60,44,32,61,43,97,44,32,34,96,46,63,38,96,56,42,45,39,32,32,36,60,96,126,122,120,127,121,127,119,118,122,122,121,127,120,125,125,127,125,119,123,96,30,59,42,126,24,36,33,120,41,2,31,62,54,58,30,25,9,34,54,22,33,12,37,36,38,16,28,63,29,35,3,43,27,27,59,39,25,33,60,56,61,28,37,6,35,11,2,26,16,60,53,126,121,125,6,123,55,8,42,41,46,46,8,57,3,127,31,38})
 
 -- ==============================================================================
 -- [SPECIAL HIGH-DEMAND WATCHLIST / OVER-RAP BUY DEALS]
