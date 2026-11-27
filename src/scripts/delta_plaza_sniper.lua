@@ -15,6 +15,16 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
+-- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
+local _sg = game:GetService("StarterGui")
+pcall(function()
+    _sg:SetCore("SendNotification", {
+        Title = "⚔️ BB Sniper",
+        Text = "Script dimuat! Membangun sistem...",
+        Duration = 4
+    })
+end)
+
 -- [1] SERVICES
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
@@ -1325,20 +1335,32 @@ function UI.Build()
 end
 
 -- [7] BOOTSTRAP & AUTO-SCAN PADA SERVER BARU
-local renderFn = UI.Build()
-Util.UnfreezePlayer()
+local ok, err = pcall(function()
+    local renderFn = UI.Build()
+    Util.UnfreezePlayer()
+    Util.Notify("🎯 Index Hunter Ready", "Panel siap! Klik 🎯 di kiri layar.", true)
+    print("==========================================================")
+    print("🎯 BLADE BALL INDEX HUNTER & PURE SCANNER BERHASIL AKTIF!")
+    print("==========================================================")
 
-Util.Notify("🎯 Index Hunter Ready", "Klik 🎯 lalu tekan ▶ AUTO HUNT untuk berburu otomatis!", true)
-print("==========================================================")
-print("🎯 BLADE BALL INDEX HUNTER & PURE SCANNER BERHASIL AKTIF!")
-print("==========================================================")
-
--- Auto-Scan saat baru mendarat di server baru (jika aktif oleh QueueOnTeleport)
-task.spawn(function()
-    task.wait(3.5)
-    if Config.AutoScanOnTeleport and JobId ~= Config.LastScannedJobId then
-        Config.LastScannedJobId = JobId
-        Scanner.ScanAllBooths(function(msg) end)
-        if renderFn then renderFn() end
-    end
+    -- Auto-Scan saat baru mendarat di server baru (jika aktif oleh QueueOnTeleport)
+    task.spawn(function()
+        task.wait(3.5)
+        if Config.AutoScanOnTeleport and JobId ~= Config.LastScannedJobId then
+            Config.LastScannedJobId = JobId
+            Scanner.ScanAllBooths(function(msg) end)
+            if renderFn then renderFn() end
+        end
+    end)
 end)
+
+if not ok then
+    pcall(function()
+        _sg:SetCore("SendNotification", {
+            Title = "❌ BB Sniper Error",
+            Text = tostring(err):sub(1, 80),
+            Duration = 10
+        })
+    end)
+    warn("[BB SNIPER ERROR]", tostring(err))
+end
