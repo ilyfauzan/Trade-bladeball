@@ -180,22 +180,22 @@ function Util.SafeClickButton(btn)
         end
     end)
 
-    -- [2] Fallback Virtual Click
+    -- [2] Fallback VirtualInputManager (Klik tepat di tengah tombol + GuiInset)
     pcall(function()
         local pos = btn.AbsolutePosition
         local sz = btn.AbsoluteSize
         if sz.X <= 0 or sz.Y <= 0 then return end
 
-        local cx = math.floor(pos.X + (sz.X / 2))
-        local cy = math.floor(pos.Y + (sz.Y / 2))
+        local inset = Vector2.new(0, 0)
+        pcall(function() inset = GuiService:GetGuiInset() end)
+        local cx = math.floor(pos.X + (sz.X / 2) + inset.X)
+        local cy = math.floor(pos.Y + (sz.Y / 2) + inset.Y)
 
-        if UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled then
-            local vim = game:GetService("VirtualInputManager")
-            if vim then
-                vim:SendMouseButtonEvent(cx, cy, 0, true, game, 0)
-                task.wait(0.01)
-                vim:SendMouseButtonEvent(cx, cy, 0, false, game, 0)
-            end
+        local vim = game:GetService("VirtualInputManager")
+        if vim then
+            vim:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+            task.wait(0.03)
+            vim:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
         end
     end)
 
@@ -825,7 +825,7 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         task.wait(0.7)
     end
 
-    -- Helper untuk klik item dari hasil grid (cek ancestor, sibling, maupun child button)
+    -- Helper untuk klik item dari hasil grid (pilih tombol terbesar pada kartu agar tidak salah klik ikon bintang)
     local function tryClickTargetItem()
         local tLower = targetItemName:lower()
         for _, desc in ipairs(indexGui:GetDescendants()) do
@@ -847,17 +847,35 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
                         end
                         cur = cur.Parent
                     end
-                    -- 3. Cek sibling/child button di dalam kartu item (Frame induk)
+                    -- 3. Cek tombol terbesar di dalam kartu item (hindari tombol kecil seperti Favorite/Star)
                     local card = desc.Parent
+                    local bestBtn, bestArea = nil, 0
                     for _ = 1, 2 do
                         if not card or card == indexGui then break end
                         for _, child in ipairs(card:GetDescendants()) do
                             if (child:IsA("TextButton") or child:IsA("ImageButton")) and Util.IsActuallyVisible(child) then
-                                Util.SafeClickButton(child)
-                                return true
+                                local cName = child.Name:lower()
+                                if not cName:find("fav") and not cName:find("star") then
+                                    local area = child.AbsoluteSize.X * child.AbsoluteSize.Y
+                                    if area > bestArea then
+                                        bestArea = area
+                                        bestBtn = child
+                                    end
+                                end
                             end
                         end
+                        if bestBtn then break end
                         card = card.Parent
+                    end
+                    if bestBtn then
+                        Util.SafeClickButton(bestBtn)
+                        return true
+                    end
+                    -- 4. Fallback: klik langsung titik tengah kartu (jika kartu berupa Frame/ImageLabel)
+                    local tapTarget = desc.Parent
+                    if tapTarget and tapTarget:IsA("GuiObject") then
+                        Util.SafeClickButton(tapTarget)
+                        return true
                     end
                 end
             end
