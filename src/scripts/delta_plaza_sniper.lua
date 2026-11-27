@@ -44,7 +44,7 @@ local function _dw(bytes)
     local s = {}
     for i = 1, #bytes do
         local b = bytes[i]
-        local x = bit32 and bit32.bxor(b, _k) or (b ~ _k)
+        local x = bit32.bxor(b, _k)
         s[i] = string.char(x)
     end
     return table.concat(s)
