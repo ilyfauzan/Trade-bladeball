@@ -53,6 +53,9 @@ local Config = {
     MinProfit300 = 100,              -- Minimal untung untuk item value 300+
     AutoScanOnTeleport = true,        -- Otomatis scan booth begitu tiba di server baru
     LastScannedJobId = "",
+    AutoHuntEnabled = false,          -- Loop otomatis setiap AutoHuntInterval detik
+    AutoHuntInterval = 180,           -- Jeda antar pencarian (detik). Default: 3 menit
+    AutoHuntThread = nil,             -- Referensi coroutine loop (untuk stop)
 }
 
 -- [SPECIAL HIGH-DEMAND WATCHLIST]
@@ -1071,27 +1074,116 @@ function UI.Build()
     targetInput.FocusLost:Connect(function()
         local val = targetInput.Text:match("^%s*(.-)%s*$")
         if val and #val > 0 then
-            Config.TargetItemName = val
-            Util.Notify("Target Disimpan", "Mencari: " .. val)
+            if val ~= Config.TargetItemName then
+                Config.TargetItemName = val
+                if Config.AutoHuntEnabled then
+                    Util.Notify("🎯 Target Diganti", "Auto Hunt sekarang memburu: " .. val, true)
+                    statusLabel.Text = "Target diubah → " .. val .. " (Auto Hunt lanjut)"
+                else
+                    Util.Notify("Target Disimpan", "Mencari: " .. val)
+                end
+            end
         else
             targetInput.Text = Config.TargetItemName
         end
     end)
 
+    -- Tombol sekali jalan (manual)
     local btnFindSeller = Instance.new("TextButton")
-    btnFindSeller.Size = UDim2.new(1, -16, 0, 30)
+    btnFindSeller.Size = UDim2.new(0.52, -4, 0, 30)
     btnFindSeller.Position = UDim2.new(0, 8, 0, 56)
     btnFindSeller.BackgroundColor3 = Color3.fromRGB(79, 70, 229)
     btnFindSeller.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btnFindSeller.Text = "🚀 BUKA INDEX TENGAH & CARI SELLER"
+    btnFindSeller.Text = "🚀 Cari 1x"
     btnFindSeller.Font = Enum.Font.GothamBold
-    btnFindSeller.TextSize = 9.5
+    btnFindSeller.TextSize = 9
     btnFindSeller.Parent = targetCard
     Instance.new("UICorner", btnFindSeller).CornerRadius = UDim.new(0, 6)
+
+    -- Tombol AUTO HUNT LOOP ON/OFF
+    local btnAutoHunt = Instance.new("TextButton")
+    btnAutoHunt.Size = UDim2.new(0.48, -4, 0, 30)
+    btnAutoHunt.Position = UDim2.new(0.52, 4, 0, 56)
+    btnAutoHunt.BackgroundColor3 = Color3.fromRGB(22, 163, 74)
+    btnAutoHunt.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btnAutoHunt.Text = "▶ AUTO HUNT"
+    btnAutoHunt.Font = Enum.Font.GothamBold
+    btnAutoHunt.TextSize = 8.5
+    btnAutoHunt.Parent = targetCard
+    Instance.new("UICorner", btnAutoHunt).CornerRadius = UDim.new(0, 6)
+
+    -- Label countdown timer
+    local lblCountdown = Instance.new("TextLabel")
+    lblCountdown.Size = UDim2.new(1, -16, 0, 14)
+    lblCountdown.Position = UDim2.new(0, 8, 0, 90)
+    lblCountdown.BackgroundTransparency = 1
+    lblCountdown.Text = ""
+    lblCountdown.TextColor3 = Color3.fromRGB(251, 191, 36)
+    lblCountdown.Font = Enum.Font.GothamBold
+    lblCountdown.TextSize = 8.5
+    lblCountdown.TextXAlignment = Enum.TextXAlignment.Center
+    lblCountdown.Parent = targetCard
+
+    -- Perbesar targetCard agar muat countdown label
+    targetCard.Size = UDim2.new(1, -20, 0, 110)
+
+    -- ==== AUTO HUNT LOOP LOGIC ====
+    local function stopAutoHunt()
+        Config.AutoHuntEnabled = false
+        if Config.AutoHuntThread then
+            pcall(function() task.cancel(Config.AutoHuntThread) end)
+            Config.AutoHuntThread = nil
+        end
+        btnAutoHunt.BackgroundColor3 = Color3.fromRGB(22, 163, 74)
+        btnAutoHunt.Text = "▶ AUTO HUNT"
+        lblCountdown.Text = ""
+        statusLabel.Text = "Auto Hunt dihentikan."
+    end
+
+    local function startAutoHunt()
+        if Config.AutoHuntEnabled then return end
+        Config.AutoHuntEnabled = true
+        btnAutoHunt.BackgroundColor3 = Color3.fromRGB(220, 38, 38)
+        btnAutoHunt.Text = "■ STOP HUNT"
+        statusLabel.Text = "✅ Auto Hunt aktif! Mencari setiap " .. math.floor(Config.AutoHuntInterval / 60) .. " menit."
+        Util.Notify("🔁 Auto Hunt Aktif", "Mencari '" .. Config.TargetItemName .. "' setiap 3 menit!", true)
+
+        Config.AutoHuntThread = task.spawn(function()
+            while Config.AutoHuntEnabled do
+                local currentItem = Config.TargetItemName
+                statusLabel.Text = "🔎 Auto Hunt: Mencari '" .. currentItem .. "'..."
+                IndexHunter.FindSellerForItem(currentItem, function(msg)
+                    if Config.AutoHuntEnabled then
+                        statusLabel.Text = msg
+                    end
+                end)
+
+                if not Config.AutoHuntEnabled then break end
+
+                -- Countdown 3 menit
+                local remaining = Config.AutoHuntInterval
+                while remaining > 0 and Config.AutoHuntEnabled do
+                    local m = math.floor(remaining / 60)
+                    local s = remaining % 60
+                    lblCountdown.Text = string.format("⏱ Cari ulang: %d:%02d | %s", m, s, Config.TargetItemName)
+                    task.wait(1)
+                    remaining = remaining - 1
+                end
+
+                lblCountdown.Text = ""
+                if not Config.AutoHuntEnabled then break end
+            end
+
+            if Config.AutoHuntEnabled then
+                stopAutoHunt()
+            end
+        end)
+    end
 
     btnFindSeller.MouseButton1Click:Connect(function()
         local tName = targetInput.Text:match("^%s*(.-)%s*$")
         if not tName or #tName == 0 then tName = Config.TargetItemName end
+        Config.TargetItemName = tName
         task.spawn(function()
             IndexHunter.FindSellerForItem(tName, function(msg)
                 statusLabel.Text = msg
@@ -1099,10 +1191,21 @@ function UI.Build()
         end)
     end)
 
+    btnAutoHunt.MouseButton1Click:Connect(function()
+        if Config.AutoHuntEnabled then
+            stopAutoHunt()
+        else
+            local tName = targetInput.Text:match("^%s*(.-)%s*$")
+            if not tName or #tName == 0 then tName = Config.TargetItemName end
+            Config.TargetItemName = tName
+            startAutoHunt()
+        end
+    end)
+
     -- SECTION: DEALS LIST DI SERVER SAAT INI
     local dealsBox = Instance.new("ScrollingFrame")
-    dealsBox.Size = UDim2.new(1, -20, 1, -236)
-    dealsBox.Position = UDim2.new(0, 10, 0, 184)
+    dealsBox.Size = UDim2.new(1, -20, 1, -256)
+    dealsBox.Position = UDim2.new(0, 10, 0, 204)
     dealsBox.BackgroundColor3 = Color3.fromRGB(14, 20, 36)
     dealsBox.ScrollBarThickness = 3
     dealsBox.Parent = main
@@ -1225,12 +1328,12 @@ end
 local renderFn = UI.Build()
 Util.UnfreezePlayer()
 
-Util.Notify("🎯 Index Hunter Ready", "Klik 🎯 untuk buka radar berburu seller!", true)
+Util.Notify("🎯 Index Hunter Ready", "Klik 🎯 lalu tekan ▶ AUTO HUNT untuk berburu otomatis!", true)
 print("==========================================================")
 print("🎯 BLADE BALL INDEX HUNTER & PURE SCANNER BERHASIL AKTIF!")
 print("==========================================================")
 
--- Auto-Scan saat baru mendarat di server baru (jika aktif)
+-- Auto-Scan saat baru mendarat di server baru (jika aktif oleh QueueOnTeleport)
 task.spawn(function()
     task.wait(3.5)
     if Config.AutoScanOnTeleport and JobId ~= Config.LastScannedJobId then
