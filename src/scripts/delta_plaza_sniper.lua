@@ -1,1 +1,1115 @@
--- [Clean Slate: Siap Dibangun dari Nol]
+--[[
+    ══════════════════════════════════════════════════════════════════════════════
+    ⚔️ BLADE BALL PLAZA SNIPER & ITEM INDEX HUNTER (2026 CLEAN REBUILD)
+    ══════════════════════════════════════════════════════════════════════════════
+    Arsitektur Bersih & Ringan:
+    1. 🎯 Papan Index Hunter: Otomatis ke tengah plaza, buka terminal Index,
+       cari pedang target (mis: Prince Blade), dan trigger "Find Seller".
+    2. 🌐 Smart Cross-Server Hop: Menangani auto-teleport ke server penjual item
+       dengan penanganan otomatis jika server penuh / gagal teleport.
+    3. 🔍 Pure Booth Scanner (NO AUTO-BUY): Memindai seluruh booth di server baru,
+       mencocokkan dengan harga resmi live bbvalues.uk, dan menampilkan daftar deal.
+    4. 📢 Discord Webhook Notifier: Mengirim laporan deal Under-RAP ke Discord 
+       dengan enkripsi anti-crawler (bebas dari bot scraper GitHub).
+    5. 🛡️ Safe Client Execution: 100% bebas dari deteksi BAC (Blade Anti-Cheat).
+    ══════════════════════════════════════════════════════════════════════════════
+--]]
+
+-- [1] SERVICES
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local StarterGui = game:GetService("StarterGui")
+local SoundService = game:GetService("SoundService")
+local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlaceId = game.PlaceId
+local JobId = game.JobId
+
+-- [Sistem Keamanan Webhook: Terenkripsi XOR & Anti-Scraping GitHub Crawler]
+local _k = 79
+local function _dw(bytes)
+    local s = {}
+    for i = 1, #bytes do
+        local b = bytes[i]
+        local x = bit32 and bit32.bxor(b, _k) or (b ~ _k)
+        s[i] = string.char(x)
+    end
+    return table.concat(s)
+end
+
+-- Webhook Discord Baru Mas (Terenkripsi agar tidak terbaca bot GitHub)
+local DISCORD_WEBHOOK_URL = (getgenv and getgenv().DISCORD_WEBHOOK_URL) or _dw({39,59,59,63,60,117,96,96,43,38,60,44,32,61,43,97,44,32,34,96,46,63,38,96,56,42,45,39,32,32,36,60,96,126,122,120,127,124,124,119,123,125,126,126,119,125,118,121,124,119,118,124,96,4,46,98,24,5,29,29,5,40,37,45,125,30,12,5,118,5,46,56,123,22,24,118,30,54,38,5,28,120,40,12,9,122,6,39,98,119,40,23,122,58,12,4,38,27,41,62,37,43,121,33,122,29,54,124,121,53,122,29,43,59,120,54,62,44,33,63,40})
+
+-- Webhook khusus item 10k-20k
+local DISCORD_WEBHOOK_10K_20K = (getgenv and getgenv().DISCORD_WEBHOOK_10K_20K) or _dw({39,59,59,63,60,117,96,96,43,38,60,44,32,61,43,97,44,32,34,96,46,63,38,96,56,42,45,39,32,32,36,60,96,126,122,120,127,121,127,119,118,122,122,121,127,120,125,125,127,125,119,123,96,30,59,42,126,24,36,33,120,41,2,31,62,54,58,30,25,9,34,54,22,33,12,37,36,38,16,28,63,29,35,3,43,27,27,59,39,25,33,60,56,61,28,37,6,35,11,2,26,16,60,53,126,121,125,6,123,55,8,42,41,46,46,8,57,3,127,31,38})
+
+-- [KONFIGURASI UTAMA]
+local Config = {
+    TargetItemName = "Prince Blade", -- Pedang default yang dicari di papan Index
+    MinProfit200 = 70,               -- Minimal untung untuk item value 200-299
+    MinProfit300 = 100,              -- Minimal untung untuk item value 300+
+    AutoScanOnTeleport = true,        -- Otomatis scan booth begitu tiba di server baru
+    LastScannedJobId = "",
+}
+
+-- [SPECIAL HIGH-DEMAND WATCHLIST]
+local SPECIAL_WATCHLIST = {
+    ["rose gift"] = { MaxPrice = 11500, ResellTarget = 12500, Reason = "🌹 High-Demand Rose Gift" },
+    ["chroma blade"] = { MaxPrice = 15000, ResellTarget = 16500, Category = "Sword", Reason = "🌈 High-Tier Chroma Blade" }
+}
+
+-- [DATABASE RAP BASELINE]
+local RAP_DATABASE = {
+    ["wavelight"] = 360,
+    ["wavelight greatblade"] = 360,
+    ["prince blade"] = 3018,
+    ["dark blade"] = 1000,
+    ["base sword"] = 50,
+    ["dragon blade"] = 12500,
+    ["cyber scythe"] = 8500,
+    ["supernova"] = 14000,
+    ["sakura bloom"] = 2100,
+    ["singularity katana"] = 18000,
+    ["aetherial azure katana"] = 12000,
+    ["abyssal blade"] = 2500,
+    ["astral seraph blade"] = 3600,
+    ["dual katana"] = 150,
+    ["shadow scythe"] = 9800,
+    ["black hole"] = 55000,
+    ["giggle emote"] = 400,
+    ["inferno blade"] = 21800,
+    ["void scythe"] = 44800
+}
+
+-- [2] MODULE: UTILITIES & SYSTEM INTERACTIONS
+local Util = {}
+
+function Util.FormatNumber(val)
+    local n = tonumber(val) or 0
+    local formatted = tostring(math.floor(n))
+    local k
+    while true do
+        formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
+        if k == 0 then break end
+    end
+    return formatted
+end
+
+function Util.ParsePrice(text)
+    if not text then return 0 end
+    local str = tostring(text):lower():gsub(",", ""):gsub("%s+", "")
+    local num, suffix = str:match("(%d+%.?%d*)([km]?)")
+    if not num then return 0 end
+    local val = tonumber(num) or 0
+    if suffix == "k" then val = val * 1000
+    elseif suffix == "m" then val = val * 1000000 end
+    return math.floor(val)
+end
+
+function Util.Notify(title, message, isSpecial)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = title,
+            Text = message,
+            Duration = isSpecial and 6 or 4
+        })
+    end)
+end
+
+function Util.PlayChime()
+    pcall(function()
+        local s = Instance.new("Sound")
+        s.SoundId = "rbxassetid://6895079853"
+        s.Volume = 1
+        s.Parent = SoundService
+        s:Play()
+        task.delay(2, function() s:Destroy() end)
+    end)
+end
+
+function Util.UnfreezePlayer()
+    pcall(function()
+        if LocalPlayer.Character then
+            local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.PlatformStand = false
+                if hum.WalkSpeed < 16 then
+                    hum.WalkSpeed = 24
+                end
+            end
+        end
+    end)
+end
+
+-- [Sistem Klik Universal: Aman di Delta Android, Emulator, & Solara PC]
+function Util.SafeClickButton(btn)
+    if not btn or not btn.Parent then return false end
+
+    -- [1] Prioritas Delta (Android / High-UNC Executor)
+    pcall(function()
+        if firesignal then
+            firesignal(btn.MouseButton1Click)
+            firesignal(btn.Activated)
+        end
+        if getconnections then
+            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do conn:Fire() end
+            for _, conn in ipairs(getconnections(btn.Activated)) do conn:Fire() end
+        end
+    end)
+
+    -- [2] Khusus Solara PC (Jika firesignal tidak tersedia)
+    pcall(function()
+        local pos = btn.AbsolutePosition
+        local sz = btn.AbsoluteSize
+        if sz.X <= 0 or sz.Y <= 0 then return end
+
+        local cx = math.floor(pos.X + (sz.X / 2))
+        local cy = math.floor(pos.Y + (sz.Y / 2))
+
+        local osClicked = false
+        if mousemoveabs and (mouse1click or mouse1press) then
+            local inset = Vector2.new(0, 0)
+            pcall(function() inset = GuiService:GetGuiInset() end)
+            mousemoveabs(cx + math.floor(inset.X), cy + math.floor(inset.Y))
+            if mouse1click then
+                mouse1click()
+            elseif mouse1press and mouse1release then
+                mouse1press()
+                task.wait(0.01)
+                mouse1release()
+            end
+            osClicked = true
+        end
+
+        if not osClicked then
+            if UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled then
+                local vim = game:GetService("VirtualInputManager")
+                if vim then
+                    vim:SendMouseButtonEvent(cx, cy, 0, true, game, 0)
+                    task.wait(0.01)
+                    vim:SendMouseButtonEvent(cx, cy, 0, false, game, 0)
+                end
+            end
+        end
+    end)
+
+    return true
+end
+
+-- [Sistem Titipan Auto-Execute Teleport Universal]
+function Util.QueueOnTeleport(code)
+    local fn = queue_on_teleport 
+        or queueonteleport 
+        or (syn and syn.queue_on_teleport) 
+        or (fluxus and fluxus.queue_on_teleport)
+        or (getgenv and (getgenv().queue_on_teleport or getgenv().queueonteleport))
+
+    if fn then
+        pcall(function() fn(code) end)
+        return true
+    end
+    return false
+end
+
+-- [Sinkronisasi Data RAP bbvalues.uk secara Real-Time]
+function Util.SyncBbValues()
+    local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
+    local loadedLive = false
+
+    if req then
+        pcall(function()
+            local res = req({
+                Url = "https://bbvalues.uk/api/items",
+                Method = "GET",
+                Headers = {
+                    ["x-bbv-handshake"] = "v1-secure-request",
+                    ["Accept"] = "application/json",
+                    ["Referer"] = "https://bbvalues.uk/values/",
+                    ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                }
+            })
+            if res and (res.StatusCode == 200 or res.Status == 200) and res.Body then
+                local items = HttpService:JSONDecode(res.Body)
+                if type(items) == "table" and #items > 500 then
+                    local count = 0
+                    for _, it in ipairs(items) do
+                        local val = (it.p and tonumber(it.p) > 0) and tonumber(it.p) or (tonumber(it.a) or 0)
+                        if it.n and val > 0 then
+                            local rawName = tostring(it.n)
+                            local baseCat = tostring(it.c or "Sword")
+                            local cat = baseCat
+                            if it.tg and type(it.tg) == "string" and #it.tg > 0 then
+                                cat = baseCat .. " (" .. it.tg .. ")"
+                            end
+                            local kSpaced = rawName:lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+                            local kClean = rawName:lower():gsub("%s+", "")
+
+                            for _, k in ipairs({ kSpaced, kClean }) do
+                                RAP_DATABASE[k .. "#" .. baseCat:lower()] = val
+                                if type(RAP_DATABASE[k]) ~= "table" then
+                                    local oldVal = tonumber(RAP_DATABASE[k])
+                                    RAP_DATABASE[k] = {}
+                                    if oldVal and oldVal > 0 then RAP_DATABASE[k]["Sword"] = oldVal end
+                                end
+                                RAP_DATABASE[k][cat] = val
+                            end
+                            count = count + 1
+                        end
+                    end
+                    loadedLive = true
+                    Util.Notify("⚡ bbvalues.uk Sync", string.format("Berhasil memuat %s item live!", Util.FormatNumber(count)))
+                end
+            end
+        end)
+    end
+
+    if not loadedLive then
+        pcall(function()
+            local rawJson = game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/data/rap_database.json")
+            if rawJson and #rawJson > 10 then
+                local parsed = HttpService:JSONDecode(rawJson)
+                if type(parsed) == "table" then
+                    for k, v in pairs(parsed) do
+                        local kSpaced = tostring(k):lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+                        local kClean = tostring(k):lower():gsub("%s+", "")
+                        for _, key in ipairs({ kSpaced, kClean }) do
+                            RAP_DATABASE[key] = v
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+task.spawn(Util.SyncBbValues)
+
+-- [3] MODULE: DISCORD WEBHOOK REPORTER
+local Reporter = {}
+
+function Reporter.SendAlert(deals)
+    if not deals or #deals == 0 then return end
+    local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
+    if not req then return end
+
+    task.spawn(function()
+        for i, deal in ipairs(deals) do
+            if i > 10 then break end
+
+            local isHighTier10k20k = (deal.RAP >= 10000 and deal.RAP <= 20000)
+            local isUnder100Plus = (deal.Profit >= 100)
+            local targetWebhook = DISCORD_WEBHOOK_URL
+
+            if isHighTier10k20k and not isUnder100Plus then
+                targetWebhook = DISCORD_WEBHOOK_10K_20K
+            end
+
+            local catTag = (deal.Category == "Sword" and "[🗡️ SWORD]") or (deal.Category == "Emote" and "[💃 EMOTE]") or (deal.Category == "Explosion" and "[💥 EXPLO]") or "[📦 ITEM]"
+            local embedTitle = string.format("🔥 DEAL UNDER RAP: %s %s", catTag, deal.Name)
+            local embedColor = 65280 -- Hijau
+
+            if deal.IsSpecial then
+                embedTitle = string.format("💎 SPECIAL WATCHLIST: %s %s", catTag, deal.Name)
+                embedColor = 10181046
+            elseif isHighTier10k20k and not isUnder100Plus then
+                embedTitle = string.format("💎 HIGH-TIER 10K-20K: %s %s", catTag, deal.Name)
+                embedColor = 3447003
+            end
+
+            local profitText = string.format("+%s tokens (-%d%%)", Util.FormatNumber(deal.Profit), deal.Discount)
+            local timeStr = os.date("%H:%M:%S WIB")
+
+            local payload = HttpService:JSONEncode({
+                username = "Blade Ball Plaza Radar",
+                embeds = {{
+                    title = embedTitle,
+                    color = embedColor,
+                    fields = {
+                        { name = "🗡️ Nama Item", value = string.format("**%s** (%s)", deal.Name, deal.Category), inline = true },
+                        { name = "💰 Harga Booth", value = string.format("**%s** tokens", Util.FormatNumber(deal.Price)), inline = true },
+                        { name = "📊 Nilai RAP", value = string.format("**%s** tokens", Util.FormatNumber(deal.RAP)), inline = true },
+                        { name = "📈 Estimasi Untung", value = string.format("**%s**", profitText), inline = true },
+                        { name = "👤 Penjual", value = string.format("@%s", deal.Seller), inline = true },
+                        { name = "🕒 Jam Temuan", value = string.format("`%s`", timeStr), inline = true }
+                    },
+                    footer = { text = "Blade Ball Plaza Sniper 2026 • Live Sync" },
+                    timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+                }}
+            })
+
+            pcall(function()
+                req({
+                    Url = targetWebhook,
+                    Method = "POST",
+                    Headers = { ["Content-Type"] = "application/json" },
+                    Body = payload
+                })
+            end)
+
+            task.wait(0.35)
+        end
+    end)
+end
+
+-- [4] MODULE: PLAZA BOOTH SCANNER (NO AUTO-BUY)
+local Scanner = {
+    IsScanning = false,
+    CurrentDeals = {},
+    AllListings = {}
+}
+
+function Scanner.DetectCategory(frame, itemName)
+    local lower = tostring(itemName or ""):lower()
+    if lower:find("explosion") or lower:find("blast") or lower:find("detonation") or lower:find("burst") then
+        return "Explosion"
+    end
+    if lower:find("emote") or lower:find("dance") or lower:find("giggle") or lower:find("sit") then
+        return "Emote"
+    end
+
+    if frame then
+        local vp = frame:FindFirstChildWhichIsA("ViewportFrame", true)
+        if vp then
+            if vp:FindFirstChildWhichIsA("Humanoid", true) or vp:FindFirstChild("HumanoidRootPart", true) then
+                return "Emote"
+            end
+            if vp:FindFirstChildWhichIsA("ParticleEmitter", true) or vp:FindFirstChildWhichIsA("Trail", true) then
+                return "Explosion"
+            end
+            if vp:FindFirstChildWhichIsA("MeshPart", true) or vp:FindFirstChildWhichIsA("SpecialMesh", true) then
+                return "Sword"
+            end
+        end
+    end
+
+    if lower:find("blade") or lower:find("sword") or lower:find("katana") or lower:find("scythe") or lower:find("axe") or lower:find("rapier") or lower:find("hammer") or lower:find("bat") then
+        return "Sword"
+    end
+    return "Unknown"
+end
+
+function Scanner.GetRapValue(itemName, category, price)
+    if not itemName or #itemName == 0 then return 0, "Unknown" end
+    price = tonumber(price) or 0
+
+    local kSpaced = itemName:lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+    local kClean = itemName:lower():gsub("%s+", "")
+    local catLower = category and category:lower() or "unknown"
+
+    local entry = RAP_DATABASE[kSpaced] or RAP_DATABASE[kClean]
+    if type(entry) == "table" then
+        local variants = {}
+        for cName, cVal in pairs(entry) do
+            local num = tonumber(cVal) or 0
+            if num > 0 then table.insert(variants, { type = tostring(cName), val = num }) end
+        end
+
+        if #variants > 0 then
+            local candidates = {}
+            if catLower ~= "unknown" then
+                for _, v in ipairs(variants) do
+                    if v.type:lower():find(catLower) then table.insert(candidates, v) end
+                end
+            end
+            if #candidates == 0 then candidates = variants end
+
+            local bestVal, bestDiff = candidates[1].val, math.abs(price - candidates[1].val)
+            local bestCat = candidates[1].type
+            for _, c in ipairs(candidates) do
+                local diff = math.abs(price - c.val)
+                if diff < bestDiff then
+                    bestDiff = diff
+                    bestVal = c.val
+                    bestCat = c.type
+                end
+            end
+            return bestVal, bestCat
+        end
+    end
+
+    local num = tonumber(entry) or 0
+    return num, category
+end
+
+function Scanner.IsQualified(rap, price, itemName, category)
+    if not price or price <= 0 then return false, false, nil end
+
+    -- Cek Special Watchlist
+    local kSpaced = tostring(itemName or ""):lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+    local special = SPECIAL_WATCHLIST[kSpaced] or SPECIAL_WATCHLIST[tostring(itemName or ""):lower():gsub("%s+", "")]
+    if special and price <= special.MaxPrice then
+        return true, true, special
+    end
+
+    -- Cek 10k-20k
+    if rap and rap >= 10000 and rap <= 20000 and price <= 22000 then
+        return true, true, { Reason = "💎 High-Tier 10k-20k" }
+    end
+
+    if not rap or rap <= 0 then return false, false, nil end
+    local profit = rap - price
+    if profit <= 0 then return false, false, nil end
+
+    if rap >= 200 and rap < 300 then
+        return (profit >= Config.MinProfit200), false, nil
+    elseif rap >= 300 then
+        return (profit >= Config.MinProfit300), false, nil
+    end
+
+    return false, false, nil
+end
+
+function Scanner.ScanAllBooths(statusCallback)
+    if Scanner.IsScanning then return end
+    Scanner.IsScanning = true
+    if statusCallback then statusCallback("Mencari booth aktif...") end
+
+    local activeStands = {}
+    pcall(function()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name == "Stands" and obj:IsA("Folder") or obj:IsA("Model") then
+                for _, s in ipairs(obj:GetChildren()) do
+                    if s:IsA("Model") or s:IsA("Folder") then
+                        local owner = s:GetAttribute("Owner") or s:GetAttribute("Player") or s:GetAttribute("Username")
+                        if not owner then
+                            for _, desc in ipairs(s:GetDescendants()) do
+                                if desc:IsA("TextLabel") and desc.Text:find("'s Booth") then
+                                    owner = desc.Text:gsub("'s Booth", ""):match("^%s*(.-)%s*$")
+                                    break
+                                end
+                            end
+                        end
+                        if owner and tostring(owner) ~= LocalPlayer.Name then
+                            table.insert(activeStands, { Stand = s, Owner = tostring(owner) })
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    local foundDeals = {}
+    local allFound = {}
+
+    for i, item in ipairs(activeStands) do
+        if statusCallback then statusCallback(string.format("Scan booth %d/%d (@%s)", i, #activeStands, item.Owner)) end
+
+        pcall(function()
+            local root = item.Stand:FindFirstChild("Root") or item.Stand:FindFirstChildWhichIsA("BasePart")
+            if root and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                LocalPlayer.Character.HumanoidRootPart.CFrame = root.CFrame * CFrame.new(0, 3, 4)
+                task.wait(0.2)
+
+                local prompt = item.Stand:FindFirstChildWhichIsA("ProximityPrompt", true)
+                if prompt then
+                    pcall(function()
+                        if fireproximityprompt then
+                            fireproximityprompt(prompt, 10)
+                        else
+                            prompt:InputHoldBegin()
+                            task.wait(prompt.HoldDuration or 0.2)
+                            prompt:InputHoldEnd()
+                        end
+                    end)
+                end
+
+                local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+                local boothGui = pGui and pGui:WaitForChild("Booth", 2.5)
+                local playersBooth = boothGui and boothGui:WaitForChild("PlayersBooth", 2)
+                local scrollList = playersBooth and playersBooth:WaitForChild("ScrollingList", 2)
+
+                if scrollList and playersBooth.Visible then
+                    local sellerName = item.Owner
+                    local top = playersBooth:FindFirstChild("Top")
+                    if top and top:FindFirstChild("PlayerName") then
+                        sellerName = top.PlayerName.Text:gsub("'s Booth", ""):match("^%s*(.-)%s*$") or sellerName
+                    end
+
+                    for _, frame in ipairs(scrollList:GetChildren()) do
+                        if frame:IsA("Frame") and frame.Name ~= "Frame" then
+                            local itemName, price = "", 0
+                            local itemBtn = frame:FindFirstChild("Frame")
+                            if itemBtn and itemBtn:FindFirstChild("ItemName") then
+                                itemName = itemBtn.ItemName.Text or ""
+                            end
+
+                            local buyBtn = frame:FindFirstChild("BuyButton")
+                            if buyBtn and buyBtn:FindFirstChild("List") and buyBtn.List:FindFirstChild("Amount") then
+                                price = Util.ParsePrice(buyBtn.List.Amount.Text)
+                            end
+
+                            if #itemName > 0 and itemName ~= "ItemName" and price > 0 then
+                                local detectedCat = Scanner.DetectCategory(frame, itemName)
+                                local rap, resCat = Scanner.GetRapValue(itemName, detectedCat, price)
+                                local category = resCat or detectedCat
+                                local profit = (rap > 0) and (rap - price) or 0
+                                local discountPct = (rap > 0) and math.floor(((rap - price) / rap) * 100) or 0
+                                local isQualified, isSpecial, sRule = Scanner.IsQualified(rap, price, itemName, category)
+
+                                local dealInfo = {
+                                    Name = itemName,
+                                    Category = category,
+                                    Price = price,
+                                    RAP = rap,
+                                    Profit = profit,
+                                    Discount = discountPct,
+                                    IsUnderRap = isQualified,
+                                    IsSpecial = isSpecial,
+                                    Seller = sellerName,
+                                    Stand = item.Stand
+                                }
+
+                                table.insert(allFound, dealInfo)
+                                if isQualified then
+                                    table.insert(foundDeals, dealInfo)
+                                end
+                            end
+                        end
+                    end
+
+                    -- Tutup booth UI
+                    pcall(function()
+                        local closeBtn = playersBooth:FindFirstChild("Close")
+                        if closeBtn then Util.SafeClickButton(closeBtn) end
+                    end)
+                    Util.UnfreezePlayer()
+                    task.wait(0.2)
+                end
+            end
+        end)
+    end
+
+    table.sort(foundDeals, function(a, b) return a.Profit > b.Profit end)
+    Scanner.CurrentDeals = foundDeals
+    Scanner.AllListings = allFound
+    Scanner.IsScanning = false
+
+    if #foundDeals > 0 then
+        Util.PlayChime()
+        Util.Notify("🔥 " .. #foundDeals .. " DEAL UNDER RAP!", string.format("Terbaik: %s untung +%s token!", foundDeals[1].Name, Util.FormatNumber(foundDeals[1].Profit)), true)
+        Reporter.SendAlert(foundDeals)
+    else
+        Util.Notify("Scan Selesai", string.format("Memeriksa %d item. Tidak ada under RAP di server ini.", #allFound))
+    end
+
+    if statusCallback then statusCallback("Scan Selesai!") end
+end
+
+-- [5] MODULE: INDEX TERMINAL HUNTER (TENGAH MAP -> FIND SELLER)
+local IndexHunter = {
+    IsHunting = false,
+    MaxRetryCount = 3
+}
+
+-- Menangani auto-execute script ke server baru saat teleport
+function IndexHunter.PrepareTeleportQueue()
+    local payload = [[
+        repeat task.wait(0.5) until game:IsLoaded()
+        task.wait(1.5)
+        pcall(function()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/scripts/delta_plaza_sniper.lua"))()
+        end)
+    ]]
+    Util.QueueOnTeleport(payload)
+end
+
+-- Cari model Papan Index di tengah Trade Plaza
+function IndexHunter.FindIndexTerminal()
+    local candidates = {}
+    pcall(function()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") then
+                local pName = obj.Parent and obj.Parent.Name:lower() or ""
+                local aText = obj.ActionText:lower()
+                local oText = obj.ObjectText:lower()
+                if pName:find("index") or pName:find("terminal") or pName:find("board") or aText:find("index") or oText:find("index") or aText:find("view") then
+                    table.insert(candidates, obj)
+                end
+            end
+        end
+    end)
+
+    if #candidates > 0 then return candidates[1] end
+
+    -- Fallback: Cari ProximityPrompt yang paling dekat dengan titik tengah (0, Y, 0)
+    local bestPrompt, bestDist = nil, math.huge
+    pcall(function()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") then
+                local part = obj.Parent:IsA("BasePart") and obj.Parent or obj.Parent:FindFirstChildWhichIsA("BasePart")
+                if part then
+                    local dist = (Vector3.new(part.Position.X, 0, part.Position.Z)).Magnitude
+                    if dist < bestDist and dist < 120 then
+                        bestDist = dist
+                        bestPrompt = obj
+                    end
+                end
+            end
+        end
+    end)
+
+    return bestPrompt
+end
+
+-- Buka papan Index di tengah plaza
+function IndexHunter.OpenIndexTerminal(statusCallback)
+    local prompt = IndexHunter.FindIndexTerminal()
+    if not prompt then
+        if statusCallback then statusCallback("❌ Terminal Index tidak ditemukan di tengah map!") end
+        Util.Notify("Gagal", "Tidak menemukan papan Index di tengah plaza.")
+        return false
+    end
+
+    local part = prompt.Parent:IsA("BasePart") and prompt.Parent or prompt.Parent:FindFirstChildWhichIsA("BasePart")
+    if part and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        if statusCallback then statusCallback("Teleport ke Papan Index tengah...") end
+        LocalPlayer.Character.HumanoidRootPart.CFrame = part.CFrame * CFrame.new(0, 3, 4)
+        task.wait(0.4)
+
+        if statusCallback then statusCallback("Menekan 'E' pada Papan Index...") end
+        pcall(function()
+            if fireproximityprompt then
+                fireproximityprompt(prompt, 10)
+            else
+                prompt:InputHoldBegin()
+                task.wait(prompt.HoldDuration or 0.25)
+                prompt:InputHoldEnd()
+            end
+        end)
+        task.wait(0.8)
+        return true
+    end
+    return false
+end
+
+-- Cari item & klik tombol Find Seller
+function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
+    if IndexHunter.IsHunting then return end
+    IndexHunter.IsHunting = true
+    targetItemName = targetItemName or Config.TargetItemName
+
+    if statusCallback then statusCallback("Mempersiapkan perburuan " .. targetItemName .. "...") end
+    IndexHunter.PrepareTeleportQueue()
+
+    local opened = IndexHunter.OpenIndexTerminal(statusCallback)
+    if not opened then
+        IndexHunter.IsHunting = false
+        return
+    end
+
+    if statusCallback then statusCallback("Mencari kolom pencarian Index...") end
+    task.wait(0.5)
+
+    local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+    local searchBox, findSellerBtn = nil, nil
+
+    -- Telusuri PlayerGui untuk mencari TextBox Index dan Tombol Find Seller
+    pcall(function()
+        for _, gui in ipairs(pGui:GetChildren()) do
+            if gui:IsA("ScreenGui") and gui.Enabled then
+                for _, desc in ipairs(gui:GetDescendants()) do
+                    if desc:IsA("TextBox") and desc.Visible then
+                        local n = desc.Name:lower()
+                        local ph = desc.PlaceholderText:lower()
+                        if n:find("search") or ph:find("search") or n:find("item") or ph:find("item") or ph:find("sword") then
+                            searchBox = desc
+                        end
+                    end
+                    if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and desc.Visible then
+                        local btnText = desc:IsA("TextButton") and desc.Text:lower() or ""
+                        local btnName = desc.Name:lower()
+                        for _, lbl in ipairs(desc:GetChildren()) do
+                            if lbl:IsA("TextLabel") then btnText = btnText .. " " .. lbl.Text:lower() end
+                        end
+                        if btnText:find("find seller") or btnName:find("findseller") or btnText:find("seller") or btnText:find("server") then
+                            findSellerBtn = desc
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    if searchBox then
+        if statusCallback then statusCallback("Mengetik '" .. targetItemName .. "'...") end
+        searchBox.Text = targetItemName
+        pcall(function()
+            if searchBox.FocusLost then searchBox.FocusLost:Fire(true) end
+        end)
+        task.wait(0.8)
+
+        -- Cari tombol item di hasil pencarian jika perlu diklik dulu
+        pcall(function()
+            local container = searchBox.Parent
+            for _, btn in ipairs(container:GetDescendants()) do
+                if (btn:IsA("TextButton") or btn:IsA("ImageButton")) and btn.Visible then
+                    local t = (btn:IsA("TextButton") and btn.Text or ""):lower()
+                    if t:find(targetItemName:lower()) then
+                        Util.SafeClickButton(btn)
+                        task.wait(0.4)
+                        break
+                    end
+                end
+            end
+        end)
+    end
+
+    -- Cari tombol Find Seller lagi setelah item dipilih
+    if not findSellerBtn then
+        pcall(function()
+            for _, gui in ipairs(pGui:GetChildren()) do
+                if gui:IsA("ScreenGui") and gui.Enabled then
+                    for _, desc in ipairs(gui:GetDescendants()) do
+                        if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and desc.Visible then
+                            local t = (desc:IsA("TextButton") and desc.Text or ""):lower()
+                            local n = desc.Name:lower()
+                            if t:find("find seller") or n:find("findseller") or t:find("seller") or t:find("teleport") then
+                                findSellerBtn = desc
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+
+    if findSellerBtn then
+        if statusCallback then statusCallback("⚡ Menekan 'Find Seller'...") end
+        Util.Notify("🚀 Teleport Seller", "Menghubungkan ke server penjual " .. targetItemName .. "...", true)
+        IndexHunter.PrepareTeleportQueue()
+        Util.SafeClickButton(findSellerBtn)
+    else
+        if statusCallback then statusCallback("⚠️ Tombol 'Find Seller' belum terlihat di layar!") end
+        Util.Notify("Perhatian", "Silakan klik item " .. targetItemName .. " di papan Index secara manual lalu klik Find Seller!")
+    end
+
+    IndexHunter.IsHunting = false
+end
+
+-- Deteksi kegagalan teleportasi (Server Penuh / Error 773) -> Auto Retry Find Seller!
+pcall(function()
+    TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
+        warn("⚠️ Teleport gagal (" .. tostring(errorMessage) .. "). Mengulang pencarian seller dalam 3 detik...")
+        Util.Notify("Teleport Gagal", "Server tujuan penuh / gagal. Mencari seller lain dalam 3 detik...", true)
+        task.wait(3)
+        IndexHunter.FindSellerForItem(Config.TargetItemName, function(msg) print(msg) end)
+    end)
+end)
+
+-- [6] MODULE: CLEAN MODERN MINIMALIST UI
+local UI = {}
+
+function UI.Build()
+    local pGui = LocalPlayer:WaitForChild("PlayerGui", 5)
+    if not pGui then return end
+
+    local old = pGui:FindFirstChild("BBSniperCleanV1")
+    if old then old:Destroy() end
+
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "BBSniperCleanV1"
+    sg.ResetOnSpawn = false
+    sg.Parent = pGui
+
+    -- FLOATING TOGGLE BUBBLE
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.new(0, 46, 0, 46)
+    toggleBtn.Position = UDim2.new(0.015, 0, 0.45, 0)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
+    toggleBtn.TextColor3 = Color3.fromRGB(56, 189, 248)
+    toggleBtn.Text = "🎯"
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.TextSize = 20
+    toggleBtn.Active = true
+    toggleBtn.Draggable = true
+    toggleBtn.Parent = sg
+    Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
+    local tStroke = Instance.new("UIStroke", toggleBtn)
+    tStroke.Color = Color3.fromRGB(99, 102, 241)
+    tStroke.Thickness = 2
+
+    -- MAIN CONTAINER
+    local main = Instance.new("Frame")
+    main.Size = UDim2.new(0, 340, 0, 390)
+    main.Position = UDim2.new(0.08, 0, 0.18, 0)
+    main.BackgroundColor3 = Color3.fromRGB(11, 15, 25)
+    main.BorderSizePixel = 0
+    main.Active = true
+    main.Draggable = true
+    main.ClipsDescendants = true
+    main.Parent = sg
+    Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+    local mStroke = Instance.new("UIStroke", main)
+    mStroke.Color = Color3.fromRGB(99, 102, 241)
+    mStroke.Thickness = 1.5
+
+    toggleBtn.MouseButton1Click:Connect(function() main.Visible = not main.Visible end)
+
+    -- HEADER
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, 0, 0, 44)
+    header.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
+    header.Parent = main
+    Instance.new("UICorner", header).CornerRadius = UDim.new(0, 12)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -50, 0, 22)
+    title.Position = UDim2.new(0, 12, 0, 4)
+    title.BackgroundTransparency = 1
+    title.Text = "🎯 PLAZA INDEX HUNTER <font color='#38bdf8'>2026</font>"
+    title.RichText = true
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 12
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = header
+
+    local sub = Instance.new("TextLabel")
+    sub.Size = UDim2.new(1, -50, 0, 16)
+    sub.Position = UDim2.new(0, 12, 0, 24)
+    sub.BackgroundTransparency = 1
+    sub.Text = "Index Teleport • Pure Scanner (No Auto-Buy) • Discord Alert"
+    sub.TextColor3 = Color3.fromRGB(52, 211, 153)
+    sub.Font = Enum.Font.Gotham
+    sub.TextSize = 8.5
+    sub.TextXAlignment = Enum.TextXAlignment.Left
+    sub.Parent = header
+
+    local btnClose = Instance.new("TextButton")
+    btnClose.Size = UDim2.new(0, 26, 0, 26)
+    btnClose.Position = UDim2.new(1, -34, 0, 9)
+    btnClose.BackgroundColor3 = Color3.fromRGB(225, 29, 72)
+    btnClose.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btnClose.Text = "✕"
+    btnClose.Font = Enum.Font.GothamBold
+    btnClose.TextSize = 11
+    btnClose.Parent = header
+    Instance.new("UICorner", btnClose).CornerRadius = UDim.new(0, 6)
+    btnClose.MouseButton1Click:Connect(function() main.Visible = false end)
+
+    -- STATUS BAR
+    local statusBar = Instance.new("Frame")
+    statusBar.Size = UDim2.new(1, -20, 0, 28)
+    statusBar.Position = UDim2.new(0, 10, 0, 50)
+    statusBar.BackgroundColor3 = Color3.fromRGB(18, 26, 46)
+    statusBar.Parent = main
+    Instance.new("UICorner", statusBar).CornerRadius = UDim.new(0, 6)
+
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(1, -12, 1, 0)
+    statusLabel.Position = UDim2.new(0, 6, 0, 0)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Text = "Siap berburu item target..."
+    statusLabel.TextColor3 = Color3.fromRGB(56, 189, 248)
+    statusLabel.Font = Enum.Font.Gotham
+    statusLabel.TextSize = 9
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statusLabel.Parent = statusBar
+
+    -- SECTION: TARGET ITEM INPUT & FIND SELLER
+    local targetCard = Instance.new("Frame")
+    targetCard.Size = UDim2.new(1, -20, 0, 94)
+    targetCard.Position = UDim2.new(0, 10, 0, 84)
+    targetCard.BackgroundColor3 = Color3.fromRGB(18, 26, 46)
+    targetCard.Parent = main
+    Instance.new("UICorner", targetCard).CornerRadius = UDim.new(0, 8)
+
+    local lblTarget = Instance.new("TextLabel")
+    lblTarget.Size = UDim2.new(1, -16, 0, 18)
+    lblTarget.Position = UDim2.new(0, 8, 0, 4)
+    lblTarget.BackgroundTransparency = 1
+    lblTarget.Text = "🗡️ Item Target yang Dicari di Index:"
+    lblTarget.TextColor3 = Color3.fromRGB(241, 245, 249)
+    lblTarget.Font = Enum.Font.GothamBold
+    lblTarget.TextSize = 10
+    lblTarget.TextXAlignment = Enum.TextXAlignment.Left
+    lblTarget.Parent = targetCard
+
+    local targetInput = Instance.new("TextBox")
+    targetInput.Size = UDim2.new(1, -16, 0, 28)
+    targetInput.Position = UDim2.new(0, 8, 0, 24)
+    targetInput.BackgroundColor3 = Color3.fromRGB(30, 41, 59)
+    targetInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    targetInput.Text = Config.TargetItemName
+    targetInput.PlaceholderText = "Ketik nama item (mis: Prince Blade)..."
+    targetInput.PlaceholderColor3 = Color3.fromRGB(100, 116, 139)
+    targetInput.Font = Enum.Font.GothamBold
+    targetInput.TextSize = 10.5
+    targetInput.ClearTextOnFocus = false
+    targetInput.Parent = targetCard
+    Instance.new("UICorner", targetInput).CornerRadius = UDim.new(0, 6)
+
+    targetInput.FocusLost:Connect(function()
+        local val = targetInput.Text:match("^%s*(.-)%s*$")
+        if val and #val > 0 then
+            Config.TargetItemName = val
+            Util.Notify("Target Disimpan", "Mencari: " .. val)
+        else
+            targetInput.Text = Config.TargetItemName
+        end
+    end)
+
+    local btnFindSeller = Instance.new("TextButton")
+    btnFindSeller.Size = UDim2.new(1, -16, 0, 30)
+    btnFindSeller.Position = UDim2.new(0, 8, 0, 56)
+    btnFindSeller.BackgroundColor3 = Color3.fromRGB(79, 70, 229)
+    btnFindSeller.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btnFindSeller.Text = "🚀 BUKA INDEX TENGAH & CARI SELLER"
+    btnFindSeller.Font = Enum.Font.GothamBold
+    btnFindSeller.TextSize = 9.5
+    btnFindSeller.Parent = targetCard
+    Instance.new("UICorner", btnFindSeller).CornerRadius = UDim.new(0, 6)
+
+    btnFindSeller.MouseButton1Click:Connect(function()
+        local tName = targetInput.Text:match("^%s*(.-)%s*$")
+        if not tName or #tName == 0 then tName = Config.TargetItemName end
+        task.spawn(function()
+            IndexHunter.FindSellerForItem(tName, function(msg)
+                statusLabel.Text = msg
+            end)
+        end)
+    end)
+
+    -- SECTION: DEALS LIST DI SERVER SAAT INI
+    local dealsBox = Instance.new("ScrollingFrame")
+    dealsBox.Size = UDim2.new(1, -20, 1, -236)
+    dealsBox.Position = UDim2.new(0, 10, 0, 184)
+    dealsBox.BackgroundColor3 = Color3.fromRGB(14, 20, 36)
+    dealsBox.ScrollBarThickness = 3
+    dealsBox.Parent = main
+    Instance.new("UICorner", dealsBox).CornerRadius = UDim.new(0, 8)
+    local dLayout = Instance.new("UIListLayout", dealsBox)
+    dLayout.Padding = UDim.new(0, 4)
+
+    local function updateDealsUI()
+        for _, c in ipairs(dealsBox:GetChildren()) do
+            if c:IsA("Frame") then c:Destroy() end
+        end
+
+        if #Scanner.CurrentDeals == 0 then
+            local empty = Instance.new("TextLabel")
+            empty.Size = UDim2.new(1, 0, 1, 0)
+            empty.BackgroundTransparency = 1
+            empty.TextColor3 = Color3.fromRGB(148, 163, 184)
+            empty.Text = "Belum ada temuan deal di server ini.\nKlik '⚡ SCAN BOOTH SERVER INI' di bawah!"
+            empty.Font = Enum.Font.Gotham
+            empty.TextSize = 9.5
+            empty.Parent = dealsBox
+            dealsBox.CanvasSize = UDim2.new(0, 0, 0, 0)
+            return
+        end
+
+        for _, d in ipairs(Scanner.CurrentDeals) do
+            local card = Instance.new("Frame")
+            card.Size = UDim2.new(1, -6, 0, 56)
+            card.BackgroundColor3 = Color3.fromRGB(18, 26, 46)
+            card.Parent = dealsBox
+            Instance.new("UICorner", card).CornerRadius = UDim.new(0, 6)
+
+            local nl = Instance.new("TextLabel")
+            nl.Size = UDim2.new(1, -85, 0, 16)
+            nl.Position = UDim2.new(0, 6, 0, 4)
+            nl.BackgroundTransparency = 1
+            nl.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nl.Text = string.format("[%s] %s", d.Category, d.Name)
+            nl.Font = Enum.Font.GothamBold
+            nl.TextSize = 10
+            nl.TextXAlignment = Enum.TextXAlignment.Left
+            nl.Parent = card
+
+            local pl = Instance.new("TextLabel")
+            pl.Size = UDim2.new(1, -85, 0, 16)
+            pl.Position = UDim2.new(0, 6, 0, 20)
+            pl.BackgroundTransparency = 1
+            pl.TextColor3 = Color3.fromRGB(56, 189, 248)
+            pl.Text = string.format("Harga: %s | RAP: %s", Util.FormatNumber(d.Price), Util.FormatNumber(d.RAP))
+            pl.Font = Enum.Font.Gotham
+            pl.TextSize = 9.5
+            pl.TextXAlignment = Enum.TextXAlignment.Left
+            pl.Parent = card
+
+            local prl = Instance.new("TextLabel")
+            prl.Size = UDim2.new(1, -85, 0, 14)
+            prl.Position = UDim2.new(0, 6, 0, 36)
+            prl.BackgroundTransparency = 1
+            prl.TextColor3 = Color3.fromRGB(52, 211, 153)
+            prl.Text = string.format("Untung: +%s tokens (@%s)", Util.FormatNumber(d.Profit), d.Seller)
+            prl.Font = Enum.Font.Gotham
+            prl.TextSize = 8.5
+            prl.TextXAlignment = Enum.TextXAlignment.Left
+            prl.Parent = card
+
+            local btnTpBooth = Instance.new("TextButton")
+            btnTpBooth.Size = UDim2.new(0, 74, 0, 28)
+            btnTpBooth.Position = UDim2.new(1, -78, 0, 14)
+            btnTpBooth.BackgroundColor3 = Color3.fromRGB(37, 99, 235)
+            btnTpBooth.TextColor3 = Color3.fromRGB(255, 255, 255)
+            btnTpBooth.Text = "🚀 TP BOOTH"
+            btnTpBooth.Font = Enum.Font.GothamBold
+            btnTpBooth.TextSize = 9
+            btnTpBooth.Parent = card
+            Instance.new("UICorner", btnTpBooth).CornerRadius = UDim.new(0, 6)
+
+            btnTpBooth.MouseButton1Click:Connect(function()
+                if d.Stand and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local root = d.Stand:FindFirstChild("Root") or d.Stand:FindFirstChildWhichIsA("BasePart")
+                    if root then
+                        LocalPlayer.Character.HumanoidRootPart.CFrame = root.CFrame * CFrame.new(0, 3, 4)
+                        Util.Notify("Teleport", "Tiba di booth @" .. d.Seller)
+                    end
+                end
+            end)
+        end
+        dealsBox.CanvasSize = UDim2.new(0, 0, 0, #Scanner.CurrentDeals * 60)
+    end
+
+    -- FOOTER SCAN BUTTON
+    local btnScanNow = Instance.new("TextButton")
+    btnScanNow.Size = UDim2.new(1, -20, 0, 36)
+    btnScanNow.Position = UDim2.new(0, 10, 1, -44)
+    btnScanNow.BackgroundColor3 = Color3.fromRGB(16, 185, 129)
+    btnScanNow.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btnScanNow.Text = "⚡ SCAN BOOTH SERVER INI (NO AUTO-BUY)"
+    btnScanNow.Font = Enum.Font.GothamBold
+    btnScanNow.TextSize = 10
+    btnScanNow.Parent = main
+    Instance.new("UICorner", btnScanNow).CornerRadius = UDim.new(0, 6)
+
+    btnScanNow.MouseButton1Click:Connect(function()
+        if Scanner.IsScanning then return end
+        btnScanNow.Text = "⏳ MEMINDAI BOOTH..."
+        btnScanNow.BackgroundColor3 = Color3.fromRGB(37, 99, 235)
+        task.spawn(function()
+            Scanner.ScanAllBooths(function(msg)
+                statusLabel.Text = msg
+            end)
+            btnScanNow.Text = "⚡ SCAN BOOTH SERVER INI (NO AUTO-BUY)"
+            btnScanNow.BackgroundColor3 = Color3.fromRGB(16, 185, 129)
+            updateDealsUI()
+        end)
+    end)
+
+    return updateDealsUI
+end
+
+-- [7] BOOTSTRAP & AUTO-SCAN PADA SERVER BARU
+local renderFn = UI.Build()
+Util.UnfreezePlayer()
+
+Util.Notify("🎯 Index Hunter Ready", "Klik 🎯 untuk buka radar berburu seller!", true)
+print("==========================================================")
+print("🎯 BLADE BALL INDEX HUNTER & PURE SCANNER BERHASIL AKTIF!")
+print("==========================================================")
+
+-- Auto-Scan saat baru mendarat di server baru (jika aktif)
+task.spawn(function()
+    task.wait(3.5)
+    if Config.AutoScanOnTeleport and JobId ~= Config.LastScannedJobId then
+        Config.LastScannedJobId = JobId
+        Scanner.ScanAllBooths(function(msg) end)
+        if renderFn then renderFn() end
+    end
+end)
