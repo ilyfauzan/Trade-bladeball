@@ -144,11 +144,11 @@ function Util.UnfreezePlayer()
     end)
 end
 
--- [Sistem Klik Universal: Aman di Delta Android, Emulator, & Solara PC]
+-- [Sistem Klik Universal: Dioptimalkan Khusus Delta Android]
 function Util.SafeClickButton(btn)
     if not btn or not btn.Parent then return false end
 
-    -- [1] Prioritas Delta (Android / High-UNC Executor)
+    -- [1] Prioritas Utama Delta Executor
     pcall(function()
         if firesignal then
             firesignal(btn.MouseButton1Click)
@@ -160,7 +160,7 @@ function Util.SafeClickButton(btn)
         end
     end)
 
-    -- [2] Khusus Solara PC (Jika firesignal tidak tersedia)
+    -- [2] Fallback Virtual Click
     pcall(function()
         local pos = btn.AbsolutePosition
         local sz = btn.AbsoluteSize
@@ -169,33 +169,33 @@ function Util.SafeClickButton(btn)
         local cx = math.floor(pos.X + (sz.X / 2))
         local cy = math.floor(pos.Y + (sz.Y / 2))
 
-        local osClicked = false
-        if mousemoveabs and (mouse1click or mouse1press) then
-            local inset = Vector2.new(0, 0)
-            pcall(function() inset = GuiService:GetGuiInset() end)
-            mousemoveabs(cx + math.floor(inset.X), cy + math.floor(inset.Y))
-            if mouse1click then
-                mouse1click()
-            elseif mouse1press and mouse1release then
-                mouse1press()
+        if UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled then
+            local vim = game:GetService("VirtualInputManager")
+            if vim then
+                vim:SendMouseButtonEvent(cx, cy, 0, true, game, 0)
                 task.wait(0.01)
-                mouse1release()
-            end
-            osClicked = true
-        end
-
-        if not osClicked then
-            if UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled then
-                local vim = game:GetService("VirtualInputManager")
-                if vim then
-                    vim:SendMouseButtonEvent(cx, cy, 0, true, game, 0)
-                    task.wait(0.01)
-                    vim:SendMouseButtonEvent(cx, cy, 0, false, game, 0)
-                end
+                vim:SendMouseButtonEvent(cx, cy, 0, false, game, 0)
             end
         end
     end)
 
+    return true
+end
+
+-- [Sistem Aktivasi ProximityPrompt Khusus Delta Android]
+function Util.FirePrompt(prompt)
+    if not prompt then return false end
+    pcall(function()
+        if fireproximityprompt then
+            fireproximityprompt(prompt, 10)
+            fireproximityprompt(prompt, 1)
+            fireproximityprompt(prompt, 0)
+        else
+            prompt:InputHoldBegin()
+            task.wait(prompt.HoldDuration or 0.2)
+            prompt:InputHoldEnd()
+        end
+    end)
     return true
 end
 
@@ -617,14 +617,15 @@ end
 
 -- Cari model Papan Index di tengah Trade Plaza
 function IndexHunter.FindIndexTerminal()
+    -- 1. Cari ProximityPrompt sesuai UI Blade Ball: "Open Index" (Interact)
     local candidates = {}
     pcall(function()
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("ProximityPrompt") then
+                local oText = (obj.ObjectText or ""):lower()
+                local aText = (obj.ActionText or ""):lower()
                 local pName = obj.Parent and obj.Parent.Name:lower() or ""
-                local aText = obj.ActionText:lower()
-                local oText = obj.ObjectText:lower()
-                if pName:find("index") or pName:find("terminal") or pName:find("board") or aText:find("index") or oText:find("index") or aText:find("view") then
+                if oText:find("open index") or oText:find("index") or pName:find("index") or (aText:find("interact") and oText == "") then
                     table.insert(candidates, obj)
                 end
             end
@@ -653,38 +654,64 @@ function IndexHunter.FindIndexTerminal()
     return bestPrompt
 end
 
+-- Deteksi apakah UI INDEX sudah terbuka di layar
+function IndexHunter.IsIndexUIOpen()
+    local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pGui then return false, nil end
+    for _, gui in ipairs(pGui:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Enabled then
+            for _, desc in ipairs(gui:GetDescendants()) do
+                if (desc:IsA("TextLabel") or desc:IsA("TextBox")) and desc.Visible then
+                    local t = (desc:IsA("TextLabel") and desc.Text or desc.PlaceholderText or ""):lower()
+                    if t == "index" or t:find("search for an item") then
+                        return true, gui
+                    end
+                end
+            end
+        end
+    end
+    return false, nil
+end
+
 -- Buka papan Index di tengah plaza
 function IndexHunter.OpenIndexTerminal(statusCallback)
+    local isOpen, existingGui = IndexHunter.IsIndexUIOpen()
+    if isOpen then
+        if statusCallback then statusCallback("✅ UI Index sudah terbuka di layar!") end
+        return true, existingGui
+    end
+
     local prompt = IndexHunter.FindIndexTerminal()
     if not prompt then
         if statusCallback then statusCallback("❌ Terminal Index tidak ditemukan di tengah map!") end
         Util.Notify("Gagal", "Tidak menemukan papan Index di tengah plaza.")
-        return false
+        return false, nil
     end
 
     local part = prompt.Parent:IsA("BasePart") and prompt.Parent or prompt.Parent:FindFirstChildWhichIsA("BasePart")
     if part and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         if statusCallback then statusCallback("Teleport ke Papan Index tengah...") end
-        LocalPlayer.Character.HumanoidRootPart.CFrame = part.CFrame * CFrame.new(0, 3, 4)
-        task.wait(0.4)
+        LocalPlayer.Character.HumanoidRootPart.CFrame = part.CFrame * CFrame.new(0, 3, 3.5)
+        task.wait(0.35)
 
-        if statusCallback then statusCallback("Menekan 'E' pada Papan Index...") end
-        pcall(function()
-            if fireproximityprompt then
-                fireproximityprompt(prompt, 10)
-            else
-                prompt:InputHoldBegin()
-                task.wait(prompt.HoldDuration or 0.25)
-                prompt:InputHoldEnd()
+        if statusCallback then statusCallback("Menekan 'Open Index' (Interact)...") end
+        Util.FirePrompt(prompt)
+
+        -- Tunggu sampai UI INDEX benar-benar muncul (maks 3.5 detik)
+        local t0 = tick()
+        while tick() - t0 < 3.5 do
+            local open, gui = IndexHunter.IsIndexUIOpen()
+            if open then
+                task.wait(0.3)
+                return true, gui
             end
-        end)
-        task.wait(0.8)
-        return true
+            task.wait(0.2)
+        end
     end
-    return false
+    return IndexHunter.IsIndexUIOpen()
 end
 
--- Cari item & klik tombol Find Seller
+-- Cari item & klik tombol Find Seller (Alur Sesuai Tampilan UI Game Asli)
 function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
     if IndexHunter.IsHunting then return end
     IndexHunter.IsHunting = true
@@ -693,94 +720,193 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
     if statusCallback then statusCallback("Mempersiapkan perburuan " .. targetItemName .. "...") end
     IndexHunter.PrepareTeleportQueue()
 
-    local opened = IndexHunter.OpenIndexTerminal(statusCallback)
-    if not opened then
+    local opened, indexGui = IndexHunter.OpenIndexTerminal(statusCallback)
+    if not opened or not indexGui then
         IndexHunter.IsHunting = false
+        if statusCallback then statusCallback("❌ Gagal membuka UI Index!") end
         return
     end
 
-    if statusCallback then statusCallback("Mencari kolom pencarian Index...") end
-    task.wait(0.5)
+    if statusCallback then statusCallback("Mencari kolom pencarian item...") end
+    task.wait(0.4)
 
     local pGui = LocalPlayer:FindFirstChild("PlayerGui")
-    local searchBox, findSellerBtn = nil, nil
+    local searchBox, searchBtn = nil, nil
 
-    -- Telusuri PlayerGui untuk mencari TextBox Index dan Tombol Find Seller
-    pcall(function()
-        for _, gui in ipairs(pGui:GetChildren()) do
-            if gui:IsA("ScreenGui") and gui.Enabled then
-                for _, desc in ipairs(gui:GetDescendants()) do
-                    if desc:IsA("TextBox") and desc.Visible then
-                        local n = desc.Name:lower()
-                        local ph = desc.PlaceholderText:lower()
-                        if n:find("search") or ph:find("search") or n:find("item") or ph:find("item") or ph:find("sword") then
-                            searchBox = desc
-                        end
-                    end
-                    if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and desc.Visible then
-                        local btnText = desc:IsA("TextButton") and desc.Text:lower() or ""
-                        local btnName = desc.Name:lower()
-                        for _, lbl in ipairs(desc:GetChildren()) do
-                            if lbl:IsA("TextLabel") then btnText = btnText .. " " .. lbl.Text:lower() end
-                        end
-                        if btnText:find("find seller") or btnName:find("findseller") or btnText:find("seller") or btnText:find("server") then
-                            findSellerBtn = desc
-                        end
-                    end
+    -- [1] Cari TextBox pencarian ("Search for an item")
+    for _, desc in ipairs(indexGui:GetDescendants()) do
+        if desc:IsA("TextBox") and desc.Visible then
+            local ph = (desc.PlaceholderText or ""):lower()
+            local n = desc.Name:lower()
+            if ph:find("search") or n:find("search") or ph:find("item") then
+                searchBox = desc
+                break
+            end
+        end
+    end
+
+    if searchBox then
+        -- Cari tombol search magnifying glass (ikon Q hijau) di sebelah TextBox
+        local parentBox = searchBox.Parent
+        if parentBox then
+            for _, sibling in ipairs(parentBox:GetDescendants()) do
+                if (sibling:IsA("ImageButton") or sibling:IsA("TextButton")) and sibling.Visible and sibling ~= searchBox then
+                    searchBtn = sibling
+                    break
                 end
             end
         end
-    end)
 
-    if searchBox then
         if statusCallback then statusCallback("Mengetik '" .. targetItemName .. "'...") end
         searchBox.Text = targetItemName
         pcall(function()
             if searchBox.FocusLost then searchBox.FocusLost:Fire(true) end
         end)
-        task.wait(0.8)
-
-        -- Cari tombol item di hasil pencarian jika perlu diklik dulu
-        pcall(function()
-            local container = searchBox.Parent
-            for _, btn in ipairs(container:GetDescendants()) do
-                if (btn:IsA("TextButton") or btn:IsA("ImageButton")) and btn.Visible then
-                    local t = (btn:IsA("TextButton") and btn.Text or ""):lower()
-                    if t:find(targetItemName:lower()) then
-                        Util.SafeClickButton(btn)
-                        task.wait(0.4)
-                        break
-                    end
-                end
-            end
-        end)
+        if searchBtn then
+            Util.SafeClickButton(searchBtn)
+        end
+        task.wait(0.7)
     end
 
-    -- Cari tombol Find Seller lagi setelah item dipilih
+    -- [2] Cari kartu item di hasil pencarian (misal: "Rose Gift" / targetItemName)
+    if statusCallback then statusCallback("Memilih item '" .. targetItemName .. "'...") end
+    local itemClicked = false
+    local tLower = targetItemName:lower()
+
+    for _, desc in ipairs(indexGui:GetDescendants()) do
+        if desc:IsA("TextLabel") and desc.Visible then
+            local txt = desc.Text:lower()
+            if txt == tLower or (txt:find(tLower, 1, true) and not txt:find("search")) then
+                -- Cari tombol parent atau ancestor terdekat
+                local cur = desc
+                while cur and cur ~= indexGui do
+                    if cur:IsA("TextButton") or cur:IsA("ImageButton") then
+                        Util.SafeClickButton(cur)
+                        itemClicked = true
+                        break
+                    end
+                    cur = cur.Parent
+                end
+                if itemClicked then break end
+            end
+        end
+    end
+
+    if not itemClicked then
+        -- Fallback: coba klik tombol pertama di daftar hasil jika ada
+        for _, desc in ipairs(indexGui:GetDescendants()) do
+            if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and desc.Visible then
+                local n = desc.Name:lower()
+                if n:find("item") or n:find("slot") or n:find("card") or n:find("cell") then
+                    Util.SafeClickButton(desc)
+                    itemClicked = true
+                    break
+                end
+            end
+        end
+    end
+
+    task.wait(0.6)
+
+    -- [3] Cari dan klik tombol "Find Seller" (Orange button di sebelah kanan)
+    if statusCallback then statusCallback("Mencari tombol 'Find Seller'...") end
+    local findSellerBtn = nil
+
+    for _, desc in ipairs(indexGui:GetDescendants()) do
+        if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and desc.Visible then
+            local t = (desc:IsA("TextButton") and desc.Text or ""):lower()
+            local n = desc.Name:lower()
+            for _, lbl in ipairs(desc:GetChildren()) do
+                if lbl:IsA("TextLabel") then t = t .. " " .. lbl.Text:lower() end
+            end
+            if t:find("find seller") or n:find("findseller") or t:find("seller") then
+                findSellerBtn = desc
+                break
+            end
+        end
+    end
+
     if not findSellerBtn then
-        pcall(function()
-            for _, gui in ipairs(pGui:GetChildren()) do
-                if gui:IsA("ScreenGui") and gui.Enabled then
-                    for _, desc in ipairs(gui:GetDescendants()) do
-                        if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and desc.Visible then
-                            local t = (desc:IsA("TextButton") and desc.Text or ""):lower()
-                            local n = desc.Name:lower()
-                            if t:find("find seller") or n:find("findseller") or t:find("seller") or t:find("teleport") then
-                                findSellerBtn = desc
-                                break
-                            end
+        -- Periksa seluruh PlayerGui jika tombol berada di luar indexGui
+        for _, gui in ipairs(pGui:GetChildren()) do
+            if gui:IsA("ScreenGui") and gui.Enabled and gui ~= indexGui then
+                for _, desc in ipairs(gui:GetDescendants()) do
+                    if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and desc.Visible then
+                        local t = (desc:IsA("TextButton") and desc.Text or ""):lower()
+                        for _, lbl in ipairs(desc:GetChildren()) do
+                            if lbl:IsA("TextLabel") then t = t .. " " .. lbl.Text:lower() end
+                        end
+                        if t:find("find seller") then
+                            findSellerBtn = desc
+                            break
                         end
                     end
                 end
             end
-        end)
+            if findSellerBtn then break end
+        end
     end
 
     if findSellerBtn then
         if statusCallback then statusCallback("⚡ Menekan 'Find Seller'...") end
-        Util.Notify("🚀 Teleport Seller", "Menghubungkan ke server penjual " .. targetItemName .. "...", true)
-        IndexHunter.PrepareTeleportQueue()
         Util.SafeClickButton(findSellerBtn)
+        task.wait(0.5)
+
+        -- [4] MENANGANI NOTIFICATION POPUP ("A seller has been found! Would you like to teleport to their server?")
+        if statusCallback then statusCallback("⏳ Menunggu konfirmasi seller...") end
+        local confirmed = false
+        local waitStart = tick()
+
+        while tick() - waitStart < 14 do
+            task.wait(0.3)
+            -- Cari dialog Notification
+            for _, gui in ipairs(pGui:GetChildren()) do
+                if gui:IsA("ScreenGui") and gui.Enabled then
+                    for _, desc in ipairs(gui:GetDescendants()) do
+                        if desc:IsA("TextLabel") and desc.Visible then
+                            local txt = desc.Text:lower()
+                            if txt:find("a seller has been found") or txt:find("teleport to their server") then
+                                -- Dialog ditemukan! Sekarang cari tombol "Yes" (hijau)
+                                local dialogContainer = desc.Parent
+                                while dialogContainer and not (dialogContainer:IsA("Frame") or dialogContainer:IsA("ScreenGui")) do
+                                    dialogContainer = dialogContainer.Parent
+                                end
+
+                                if dialogContainer then
+                                    for _, btn in ipairs(dialogContainer:GetDescendants()) do
+                                        if (btn:IsA("TextButton") or btn:IsA("ImageButton")) and btn.Visible then
+                                            local btnTxt = (btn:IsA("TextButton") and btn.Text or ""):lower()
+                                            for _, l in ipairs(btn:GetChildren()) do
+                                                if l:IsA("TextLabel") then btnTxt = btnTxt .. " " .. l.Text:lower() end
+                                            end
+                                            if btnTxt:find("yes") or btnTxt == "yes" then
+                                                if statusCallback then statusCallback("🚀 Menekan 'Yes' - Menghubungkan ke server...") end
+                                                Util.Notify("🚀 Teleport Seller", "Seller ditemukan! Menghubungkan ke server...", true)
+                                                IndexHunter.PrepareTeleportQueue()
+                                                Util.SafeClickButton(btn)
+                                                confirmed = true
+                                                break
+                                            end
+                                        end
+                                    end
+                                end
+                            elseif txt:find("no seller") or txt:find("could not find") then
+                                if statusCallback then statusCallback("⚠️ Seller tidak ditemukan saat ini!") end
+                                Util.Notify("Tidak Ada Seller", "Tidak ada seller yang menjual " .. targetItemName .. " saat ini.")
+                                confirmed = true
+                                break
+                            end
+                        end
+                        if confirmed then break end
+                    end
+                end
+                if confirmed then break end
+            end
+        end
+
+        if not confirmed and statusCallback then
+            statusCallback("⚠️ Waktu pencarian seller habis atau popup belum muncul.")
+        end
     else
         if statusCallback then statusCallback("⚠️ Tombol 'Find Seller' belum terlihat di layar!") end
         Util.Notify("Perhatian", "Silakan klik item " .. targetItemName .. " di papan Index secara manual lalu klik Find Seller!")
