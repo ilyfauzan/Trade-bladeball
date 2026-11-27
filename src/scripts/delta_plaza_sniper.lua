@@ -161,15 +161,22 @@ end
 function Util.SafeClickButton(btn)
     if not btn or not btn.Parent then return false end
 
-    -- [1] Prioritas Utama Delta Executor
+    -- [1] Prioritas Utama Delta Executor (MouseButton1Click, Activated, MouseButton1Down/Up)
     pcall(function()
         if firesignal then
-            firesignal(btn.MouseButton1Click)
-            firesignal(btn.Activated)
+            pcall(function() firesignal(btn.MouseButton1Down) end)
+            pcall(function() firesignal(btn.MouseButton1Up) end)
+            pcall(function() firesignal(btn.MouseButton1Click) end)
+            pcall(function() firesignal(btn.Activated) end)
         end
         if getconnections then
-            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do conn:Fire() end
-            for _, conn in ipairs(getconnections(btn.Activated)) do conn:Fire() end
+            for _, sigName in ipairs({"MouseButton1Down", "MouseButton1Up", "MouseButton1Click", "Activated"}) do
+                pcall(function()
+                    for _, conn in ipairs(getconnections(btn[sigName])) do
+                        conn:Fire()
+                    end
+                end)
+            end
         end
     end)
 
@@ -818,20 +825,39 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         task.wait(0.7)
     end
 
-    -- Helper untuk klik item dari hasil grid
+    -- Helper untuk klik item dari hasil grid (cek ancestor, sibling, maupun child button)
     local function tryClickTargetItem()
         local tLower = targetItemName:lower()
         for _, desc in ipairs(indexGui:GetDescendants()) do
-            if desc:IsA("TextLabel") and Util.IsActuallyVisible(desc) then
-                local txt = desc.Text:lower()
+            if (desc:IsA("TextLabel") or desc:IsA("TextButton")) and Util.IsActuallyVisible(desc) then
+                local txt = (desc.Text or ""):lower():match("^%s*(.-)%s*$")
                 if txt == tLower or (txt:find(tLower, 1, true) and not txt:find("search")) then
-                    local cur = desc
-                    while cur and cur ~= indexGui do
+                    -- 1. Jika desc sendiri adalah TextButton
+                    if desc:IsA("TextButton") then
+                        Util.SafeClickButton(desc)
+                        return true
+                    end
+                    -- 2. Cek ancestor sampai 3 tingkat
+                    local cur = desc.Parent
+                    for _ = 1, 3 do
+                        if not cur or cur == indexGui then break end
                         if cur:IsA("TextButton") or cur:IsA("ImageButton") then
                             Util.SafeClickButton(cur)
                             return true
                         end
                         cur = cur.Parent
+                    end
+                    -- 3. Cek sibling/child button di dalam kartu item (Frame induk)
+                    local card = desc.Parent
+                    for _ = 1, 2 do
+                        if not card or card == indexGui then break end
+                        for _, child in ipairs(card:GetDescendants()) do
+                            if (child:IsA("TextButton") or child:IsA("ImageButton")) and Util.IsActuallyVisible(child) then
+                                Util.SafeClickButton(child)
+                                return true
+                            end
+                        end
+                        card = card.Parent
                     end
                 end
             end
