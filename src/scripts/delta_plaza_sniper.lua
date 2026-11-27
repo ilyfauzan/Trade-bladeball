@@ -633,7 +633,7 @@ end
 
 -- Cari model Papan Index di tengah Trade Plaza
 function IndexHunter.FindIndexTerminal()
-    -- 1. Cari ProximityPrompt sesuai UI Blade Ball: "Open Index" (Interact)
+    -- 1. Cari ProximityPrompt yang namanya atau teksnya jelas merujuk ke Index
     local candidates = {}
     pcall(function()
         for _, obj in ipairs(workspace:GetDescendants()) do
@@ -641,7 +641,7 @@ function IndexHunter.FindIndexTerminal()
                 local oText = (obj.ObjectText or ""):lower()
                 local aText = (obj.ActionText or ""):lower()
                 local pName = obj.Parent and obj.Parent.Name:lower() or ""
-                if oText:find("open index") or oText:find("index") or pName:find("index") or (aText:find("interact") and oText == "") then
+                if oText:find("open index") or oText:find("index") or aText:find("index") or pName:find("index") then
                     table.insert(candidates, obj)
                 end
             end
@@ -650,7 +650,7 @@ function IndexHunter.FindIndexTerminal()
 
     if #candidates > 0 then return candidates[1] end
 
-    -- Fallback: Cari ProximityPrompt yang paling dekat dengan titik tengah (0, Y, 0)
+    -- 2. Fallback: Cari ProximityPrompt yang paling dekat dengan titik tengah (0, Y, 0)
     local bestPrompt, bestDist = nil, math.huge
     pcall(function()
         for _, obj in ipairs(workspace:GetDescendants()) do
@@ -1273,12 +1273,20 @@ function UI.Build()
         local tName = targetInput.Text:match("^%s*(.-)%s*$")
         if not tName or #tName == 0 then tName = Config.TargetItemName end
         Config.TargetItemName = tName
+        Util.Notify("🔎 Mencari Seller", "Membuka Index untuk: " .. tName)
         -- Tutup UI script agar tidak mengganggu pencarian Index
         main.Visible = false
         task.spawn(function()
-            IndexHunter.FindSellerForItem(tName, function(msg)
-                statusLabel.Text = msg
+            local okHunt, errHunt = pcall(function()
+                IndexHunter.FindSellerForItem(tName, function(msg)
+                    statusLabel.Text = msg
+                end)
             end)
+            if not okHunt then
+                IndexHunter.IsHunting = false
+                main.Visible = true
+                Util.Notify("❌ Hunt Error", tostring(errHunt):sub(1, 60))
+            end
         end)
     end)
 
