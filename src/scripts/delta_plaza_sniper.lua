@@ -1239,6 +1239,8 @@ function UI.Build()
 
         Config.AutoHuntThread = task.spawn(function()
             while Config.AutoHuntEnabled do
+                -- Tutup UI script agar tidak menghalangi papan Index saat mencari
+                main.Visible = false
                 local currentItem = Config.TargetItemName
                 statusLabel.Text = "🔎 Auto Hunt: Mencari '" .. currentItem .. "'..."
                 IndexHunter.FindSellerForItem(currentItem, function(msg)
@@ -1273,6 +1275,8 @@ function UI.Build()
         local tName = targetInput.Text:match("^%s*(.-)%s*$")
         if not tName or #tName == 0 then tName = Config.TargetItemName end
         Config.TargetItemName = tName
+        -- Tutup UI script agar tidak mengganggu pencarian Index
+        main.Visible = false
         task.spawn(function()
             IndexHunter.FindSellerForItem(tName, function(msg)
                 statusLabel.Text = msg
