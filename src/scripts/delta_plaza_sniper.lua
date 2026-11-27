@@ -15,11 +15,13 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
+local SCRIPT_VERSION = "v2.1"
+
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
 pcall(function()
     _sg:SetCore("SendNotification", {
-        Title = "⚔️ BB Sniper",
+        Title = "⚔️ BB Sniper " .. SCRIPT_VERSION,
         Text = "Script dimuat! Membangun sistem...",
         Duration = 4
     })
@@ -1075,7 +1077,7 @@ function UI.Build()
     title.Size = UDim2.new(1, -50, 0, 22)
     title.Position = UDim2.new(0, 12, 0, 4)
     title.BackgroundTransparency = 1
-    title.Text = "🎯 PLAZA INDEX HUNTER <font color='#38bdf8'>2026</font>"
+    title.Text = "🎯 PLAZA INDEX HUNTER <font color='#38bdf8'>" .. SCRIPT_VERSION .. "</font>"
     title.RichText = true
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Font = Enum.Font.GothamBold
