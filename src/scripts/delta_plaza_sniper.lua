@@ -157,11 +157,10 @@ function Util.UnfreezePlayer()
     end)
 end
 
--- [Sistem Klik Universal: Dioptimalkan Khusus Delta Android]
+-- [Sistem Klik Universal: 100% Native Delta UNC (Bebas VirtualInputManager / Anti-BAC)]
 function Util.SafeClickButton(btn)
     if not btn or not btn.Parent then return false end
 
-    -- [1] Prioritas Utama Delta Executor (MouseButton1Click, Activated, MouseButton1Down/Up)
     pcall(function()
         if firesignal then
             pcall(function() firesignal(btn.MouseButton1Down) end)
@@ -177,25 +176,6 @@ function Util.SafeClickButton(btn)
                     end
                 end)
             end
-        end
-    end)
-
-    -- [2] Fallback VirtualInputManager (Klik tepat di tengah tombol + GuiInset)
-    pcall(function()
-        local pos = btn.AbsolutePosition
-        local sz = btn.AbsoluteSize
-        if sz.X <= 0 or sz.Y <= 0 then return end
-
-        local inset = Vector2.new(0, 0)
-        pcall(function() inset = GuiService:GetGuiInset() end)
-        local cx = math.floor(pos.X + (sz.X / 2) + inset.X)
-        local cy = math.floor(pos.Y + (sz.Y / 2) + inset.Y)
-
-        local vim = game:GetService("VirtualInputManager")
-        if vim then
-            vim:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
-            task.wait(0.03)
-            vim:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
         end
     end)
 
