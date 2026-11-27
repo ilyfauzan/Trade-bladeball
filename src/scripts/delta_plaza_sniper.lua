@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.1"
+local SCRIPT_VERSION = "v2.2"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -163,18 +163,46 @@ end
 function Util.SafeClickButton(btn)
     if not btn or not btn.Parent then return false end
 
+    local fakeTouchBegin = {
+        UserInputType = Enum.UserInputType.Touch,
+        UserInputState = Enum.UserInputState.Begin,
+        Position = Vector3.new(0, 0, 0)
+    }
+    local fakeTouchEnd = {
+        UserInputType = Enum.UserInputType.Touch,
+        UserInputState = Enum.UserInputState.End,
+        Position = Vector3.new(0, 0, 0)
+    }
+
     pcall(function()
         if firesignal then
-            pcall(function() firesignal(btn.MouseButton1Down) end)
-            pcall(function() firesignal(btn.MouseButton1Up) end)
-            pcall(function() firesignal(btn.MouseButton1Click) end)
-            pcall(function() firesignal(btn.Activated) end)
+            if btn:IsA("GuiButton") then
+                pcall(function() firesignal(btn.MouseButton1Down) end)
+                pcall(function() firesignal(btn.MouseButton1Up) end)
+                pcall(function() firesignal(btn.MouseButton1Click) end)
+                pcall(function() firesignal(btn.Activated, fakeTouchBegin, 1) end)
+                pcall(function() firesignal(btn.Activated) end)
+            end
+            pcall(function() firesignal(btn.TouchTap, {Vector2.new(0, 0)}) end)
+            pcall(function() firesignal(btn.InputBegan, fakeTouchBegin) end)
+            pcall(function() firesignal(btn.InputEnded, fakeTouchEnd) end)
         end
         if getconnections then
-            for _, sigName in ipairs({"MouseButton1Down", "MouseButton1Up", "MouseButton1Click", "Activated"}) do
+            for _, sigName in ipairs({"MouseButton1Down", "MouseButton1Up", "MouseButton1Click", "Activated", "TouchTap", "InputBegan", "InputEnded"}) do
                 pcall(function()
                     for _, conn in ipairs(getconnections(btn[sigName])) do
-                        conn:Fire()
+                        if sigName == "Activated" then
+                            pcall(function() conn:Fire(fakeTouchBegin, 1) end)
+                            pcall(function() conn:Fire() end)
+                        elseif sigName == "InputBegan" then
+                            pcall(function() conn:Fire(fakeTouchBegin) end)
+                        elseif sigName == "InputEnded" then
+                            pcall(function() conn:Fire(fakeTouchEnd) end)
+                        elseif sigName == "TouchTap" then
+                            pcall(function() conn:Fire({Vector2.new(0, 0)}) end)
+                        else
+                            pcall(function() conn:Fire() end)
+                        end
                     end
                 end)
             end
@@ -807,7 +835,7 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         task.wait(0.7)
     end
 
-    -- Helper untuk klik item dari hasil grid (pilih tombol terbesar pada kartu agar tidak salah klik ikon bintang)
+    -- Helper untuk klik item dari hasil grid (support Button, Frame InputBegan, & TouchTap)
     local function tryClickTargetItem()
         local tLower = targetItemName:lower()
         for _, desc in ipairs(indexGui:GetDescendants()) do
@@ -819,9 +847,9 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
                         Util.SafeClickButton(desc)
                         return true
                     end
-                    -- 2. Cek ancestor sampai 3 tingkat
+                    -- 2. Cek ancestor sampai 4 tingkat
                     local cur = desc.Parent
-                    for _ = 1, 3 do
+                    for _ = 1, 4 do
                         if not cur or cur == indexGui then break end
                         if cur:IsA("TextButton") or cur:IsA("ImageButton") then
                             Util.SafeClickButton(cur)
@@ -829,10 +857,10 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
                         end
                         cur = cur.Parent
                     end
-                    -- 3. Cek tombol terbesar di dalam kartu item (hindari tombol kecil seperti Favorite/Star)
+                    -- 3. Cek tombol terbesar di dalam kartu item (sampai 3 tingkat)
                     local card = desc.Parent
                     local bestBtn, bestArea = nil, 0
-                    for _ = 1, 2 do
+                    for _ = 1, 3 do
                         if not card or card == indexGui then break end
                         for _, child in ipairs(card:GetDescendants()) do
                             if (child:IsA("TextButton") or child:IsA("ImageButton")) and Util.IsActuallyVisible(child) then
@@ -853,10 +881,12 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
                         Util.SafeClickButton(bestBtn)
                         return true
                     end
-                    -- 4. Fallback: klik langsung titik tengah kartu (jika kartu berupa Frame/ImageLabel)
-                    local tapTarget = desc.Parent
-                    if tapTarget and tapTarget:IsA("GuiObject") then
-                        Util.SafeClickButton(tapTarget)
+                    -- 4. Fallback: tembak InputBegan/TouchTap langsung ke Frame kartu
+                    if desc.Parent and desc.Parent:IsA("GuiObject") then
+                        Util.SafeClickButton(desc.Parent)
+                        if desc.Parent.Parent and desc.Parent.Parent:IsA("GuiObject") then
+                            Util.SafeClickButton(desc.Parent.Parent)
+                        end
                         return true
                     end
                 end
