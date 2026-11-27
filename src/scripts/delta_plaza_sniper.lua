@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.4"
+local SCRIPT_VERSION = "v2.5"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -180,24 +180,16 @@ function Util.SafeClickButton(btn)
                 pcall(function() firesignal(btn.MouseButton1Down) end)
                 pcall(function() firesignal(btn.MouseButton1Up) end)
                 pcall(function() firesignal(btn.MouseButton1Click) end)
-                pcall(function() firesignal(btn.Activated, fakeTouchBegin, 1) end)
                 pcall(function() firesignal(btn.Activated) end)
             end
             pcall(function() firesignal(btn.TouchTap, {Vector2.new(0, 0)}) end)
             pcall(function() firesignal(btn.InputBegan, fakeTouchBegin) end)
-            pcall(function() firesignal(btn.InputEnded, fakeTouchEnd) end)
-        end
-        if getconnections then
-            for _, sigName in ipairs({"MouseButton1Down", "MouseButton1Up", "MouseButton1Click", "Activated", "TouchTap", "InputBegan", "InputEnded"}) do
+        elseif getconnections then
+            for _, sigName in ipairs({"MouseButton1Down", "MouseButton1Up", "MouseButton1Click", "Activated", "TouchTap", "InputBegan"}) do
                 pcall(function()
                     for _, conn in ipairs(getconnections(btn[sigName])) do
-                        if sigName == "Activated" then
-                            pcall(function() conn:Fire(fakeTouchBegin, 1) end)
-                            pcall(function() conn:Fire() end)
-                        elseif sigName == "InputBegan" then
+                        if sigName == "InputBegan" then
                             pcall(function() conn:Fire(fakeTouchBegin) end)
-                        elseif sigName == "InputEnded" then
-                            pcall(function() conn:Fire(fakeTouchEnd) end)
                         elseif sigName == "TouchTap" then
                             pcall(function() conn:Fire({Vector2.new(0, 0)}) end)
                         else
@@ -843,6 +835,14 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
             if (desc:IsA("TextLabel") or desc:IsA("TextButton")) and Util.IsActuallyVisible(desc) then
                 local txt = (desc.Text or ""):lower():match("^%s*(.-)%s*$")
                 if txt == tLower or (txt:find(tLower, 1, true) and not txt:find("search")) then
+                    -- 0. Prioritas Utama Blade Ball Index: Tombol "ActivationButton" di dalam kartu item!
+                    if desc.Parent then
+                        local actBtn = desc.Parent:FindFirstChild("ActivationButton", true)
+                        if actBtn and actBtn:IsA("GuiButton") then
+                            Util.SafeClickButton(actBtn)
+                            return true
+                        end
+                    end
                     -- 1. Jika desc sendiri adalah TextButton
                     if desc:IsA("TextButton") then
                         Util.SafeClickButton(desc)
