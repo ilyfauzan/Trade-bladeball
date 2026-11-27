@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.6"
+local SCRIPT_VERSION = "v2.7"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -159,7 +159,7 @@ function Util.UnfreezePlayer()
     end)
 end
 
--- [Sistem Klik Universal: 100% Native Delta UNC (Bebas VirtualInputManager / Anti-BAC)]
+-- [Sistem Klik Universal: 1x Klik Bersih Native Delta UNC (Anti-Spam & Anti-BAC)]
 function Util.SafeClickButton(btn)
     if not btn or not btn.Parent then return false end
 
@@ -168,32 +168,52 @@ function Util.SafeClickButton(btn)
         UserInputState = Enum.UserInputState.Begin,
         Position = Vector3.new(0, 0, 0)
     }
-    local fakeTouchEnd = {
-        UserInputType = Enum.UserInputType.Touch,
-        UserInputState = Enum.UserInputState.End,
-        Position = Vector3.new(0, 0, 0)
-    }
 
     pcall(function()
-        if firesignal then
-            if btn:IsA("GuiButton") then
-                pcall(function() firesignal(btn.MouseButton1Down) end)
-                pcall(function() firesignal(btn.MouseButton1Up) end)
-                pcall(function() firesignal(btn.MouseButton1Click) end)
-                pcall(function() firesignal(btn.Activated) end)
+        -- Prioritaskan 1 sinyal aktif saja agar tidak double-trigger / rate-limit server
+        if btn:IsA("GuiButton") then
+            if getconnections then
+                local actConns = getconnections(btn.Activated)
+                if #actConns > 0 then
+                    if firesignal then
+                        firesignal(btn.Activated)
+                    else
+                        for _, conn in ipairs(actConns) do pcall(function() conn:Fire() end) end
+                    end
+                    return
+                end
+
+                local clickConns = getconnections(btn.MouseButton1Click)
+                if #clickConns > 0 then
+                    if firesignal then
+                        firesignal(btn.MouseButton1Click)
+                    else
+                        for _, conn in ipairs(clickConns) do pcall(function() conn:Fire() end) end
+                    end
+                    return
+                end
             end
+
+            -- Fallback jika getconnections tidak tersedia
+            if firesignal then
+                pcall(function() firesignal(btn.Activated) end)
+                pcall(function() firesignal(btn.MouseButton1Click) end)
+                return
+            end
+        end
+
+        -- Fallback untuk non-GuiButton (Frame/ImageLabel)
+        if firesignal then
             pcall(function() firesignal(btn.TouchTap, {Vector2.new(0, 0)}) end)
             pcall(function() firesignal(btn.InputBegan, fakeTouchBegin) end)
         elseif getconnections then
-            for _, sigName in ipairs({"MouseButton1Down", "MouseButton1Up", "MouseButton1Click", "Activated", "TouchTap", "InputBegan"}) do
+            for _, sigName in ipairs({"TouchTap", "InputBegan"}) do
                 pcall(function()
                     for _, conn in ipairs(getconnections(btn[sigName])) do
                         if sigName == "InputBegan" then
                             pcall(function() conn:Fire(fakeTouchBegin) end)
-                        elseif sigName == "TouchTap" then
-                            pcall(function() conn:Fire({Vector2.new(0, 0)}) end)
                         else
-                            pcall(function() conn:Fire() end)
+                            pcall(function() conn:Fire({Vector2.new(0, 0)}) end)
                         end
                     end
                 end)
