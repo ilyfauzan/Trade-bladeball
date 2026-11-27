@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.5"
+local SCRIPT_VERSION = "v2.6"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -976,40 +976,33 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         task.wait(0.5)
 
         -- [4] MENANGANI NOTIFICATION POPUP ("A seller has been found! Would you like to teleport to their server?")
-        if statusCallback then statusCallback("⏳ Menunggu konfirmasi seller...") end
+        if statusCallback then statusCallback("⏳ Menunggu konfirmasi seller (maks 30 dtk)...") end
         local confirmed = false
         local waitStart = tick()
 
-        while tick() - waitStart < 14 do
+        while tick() - waitStart < 30 do
             task.wait(0.3)
-            -- Cari dialog Notification
+            -- Cari dialog Notification di seluruh ScreenGui aktif
             for _, gui in ipairs(pGui:GetChildren()) do
-                if gui:IsA("ScreenGui") and gui.Enabled then
+                if gui:IsA("ScreenGui") and gui.Enabled and gui.Name ~= "BBSniperCleanV1" then
                     for _, desc in ipairs(gui:GetDescendants()) do
-                        if desc:IsA("TextLabel") and desc.Visible then
+                        if desc:IsA("TextLabel") and Util.IsActuallyVisible(desc) then
                             local txt = desc.Text:lower()
                             if txt:find("a seller has been found") or txt:find("teleport to their server") then
-                                -- Dialog ditemukan! Sekarang cari tombol "Yes" (hijau)
-                                local dialogContainer = desc.Parent
-                                while dialogContainer and not (dialogContainer:IsA("Frame") or dialogContainer:IsA("ScreenGui")) do
-                                    dialogContainer = dialogContainer.Parent
-                                end
-
-                                if dialogContainer then
-                                    for _, btn in ipairs(dialogContainer:GetDescendants()) do
-                                        if (btn:IsA("TextButton") or btn:IsA("ImageButton")) and btn.Visible then
-                                            local btnTxt = (btn:IsA("TextButton") and btn.Text or ""):lower()
-                                            for _, l in ipairs(btn:GetChildren()) do
-                                                if l:IsA("TextLabel") then btnTxt = btnTxt .. " " .. l.Text:lower() end
-                                            end
-                                            if btnTxt:find("yes") or btnTxt == "yes" then
-                                                if statusCallback then statusCallback("🚀 Menekan 'Yes' - Menghubungkan ke server...") end
-                                                Util.Notify("🚀 Teleport Seller", "Seller ditemukan! Menghubungkan ke server...", true)
-                                                IndexHunter.PrepareTeleportQueue()
-                                                Util.SafeClickButton(btn)
-                                                confirmed = true
-                                                break
-                                            end
+                                -- Dialog ditemukan! Cari tombol "Yes" di seluruh gui tersebut
+                                for _, btn in ipairs(gui:GetDescendants()) do
+                                    if (btn:IsA("TextButton") or btn:IsA("ImageButton")) and Util.IsActuallyVisible(btn) then
+                                        local btnTxt = (btn:IsA("TextButton") and btn.Text or ""):lower()
+                                        for _, l in ipairs(btn:GetChildren()) do
+                                            if l:IsA("TextLabel") then btnTxt = btnTxt .. " " .. l.Text:lower() end
+                                        end
+                                        if btnTxt:find("yes") or btnTxt == "yes" then
+                                            if statusCallback then statusCallback("🚀 Menekan 'Yes' - Menghubungkan ke server...") end
+                                            Util.Notify("🚀 Teleport Seller", "Seller ditemukan! Menghubungkan ke server...", true)
+                                            IndexHunter.PrepareTeleportQueue()
+                                            Util.SafeClickButton(btn)
+                                            confirmed = true
+                                            break
                                         end
                                     end
                                 end
