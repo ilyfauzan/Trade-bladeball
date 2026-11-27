@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.3"
+local SCRIPT_VERSION = "v2.4"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -823,11 +823,12 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         end
 
         if statusCallback then statusCallback("Mengetik '" .. targetItemName .. "'...") end
-        pcall(function() searchBox:CaptureFocus() end)
         searchBox.Text = targetItemName
-        pcall(function() searchBox:ReleaseFocus(true) end)
         pcall(function()
-            if searchBox.FocusLost then searchBox.FocusLost:Fire(true) end
+            if firesignal and searchBox.FocusLost then firesignal(searchBox.FocusLost, true) end
+            if getconnections and searchBox.FocusLost then
+                for _, conn in ipairs(getconnections(searchBox.FocusLost)) do conn:Fire(true) end
+            end
         end)
         if searchBtn then
             Util.SafeClickButton(searchBtn)
