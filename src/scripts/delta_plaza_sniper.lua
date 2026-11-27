@@ -507,33 +507,30 @@ function Scanner.ScanAllBooths(statusCallback)
     local allFound = {}
 
     for i, item in ipairs(activeStands) do
-        if statusCallback then statusCallback(string.format("Scan booth %d/%d (@%s)", i, #activeStands, item.Owner)) end
+        if statusCallback then statusCallback(string.format("Stealth scan booth %d/%d (@%s)", i, #activeStands, item.Owner)) end
 
         pcall(function()
-            local root = item.Stand:FindFirstChild("Root") or item.Stand:FindFirstChildWhichIsA("BasePart")
-            if root and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                LocalPlayer.Character.HumanoidRootPart.CFrame = root.CFrame * CFrame.new(0, 3, 4)
-                task.wait(0.2)
-
-                local prompt = item.Stand:FindFirstChildWhichIsA("ProximityPrompt", true)
-                if prompt then
-                    pcall(function()
-                        if fireproximityprompt then
-                            fireproximityprompt(prompt, 10)
-                        else
-                            prompt:InputHoldBegin()
-                            task.wait(prompt.HoldDuration or 0.2)
-                            prompt:InputHoldEnd()
-                        end
-                    end)
-                end
+            local prompt = item.Stand:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if prompt then
+                -- Stealth Mode: Buka booth dari jarak jauh tanpa memindahkan karakter!
+                pcall(function()
+                    prompt.MaxActivationDistance = 99999
+                    prompt.RequiresLineOfSight = false
+                end)
+                Util.FirePrompt(prompt)
 
                 local pGui = LocalPlayer:FindFirstChild("PlayerGui")
-                local boothGui = pGui and pGui:WaitForChild("Booth", 2.5)
-                local playersBooth = boothGui and boothGui:WaitForChild("PlayersBooth", 2)
-                local scrollList = playersBooth and playersBooth:WaitForChild("ScrollingList", 2)
+                local boothGui = pGui and pGui:WaitForChild("Booth", 2.0)
+                local playersBooth = boothGui and boothGui:WaitForChild("PlayersBooth", 1.5)
+                local scrollList = playersBooth and playersBooth:WaitForChild("ScrollingList", 1.5)
 
-                if scrollList and playersBooth.Visible then
+                -- Tunggu sebentar hingga UI Booth muncul
+                local tWait = tick()
+                while playersBooth and not playersBooth.Visible and tick() - tWait < 1.2 do
+                    task.wait(0.1)
+                end
+
+                if scrollList and playersBooth and playersBooth.Visible then
                     local sellerName = item.Owner
                     local top = playersBooth:FindFirstChild("Top")
                     if top and top:FindFirstChild("PlayerName") then
@@ -588,7 +585,7 @@ function Scanner.ScanAllBooths(statusCallback)
                         if closeBtn then Util.SafeClickButton(closeBtn) end
                     end)
                     Util.UnfreezePlayer()
-                    task.wait(0.2)
+                    task.wait(0.25)
                 end
             end
         end)
@@ -701,9 +698,28 @@ function IndexHunter.OpenIndexTerminal(statusCallback)
         return false, nil
     end
 
+    -- Coba buka Index dari tempat berdiri dulu (Stealth Mode)
+    pcall(function()
+        prompt.MaxActivationDistance = 99999
+        prompt.RequiresLineOfSight = false
+    end)
+    if statusCallback then statusCallback("Membuka Papan Index (Stealth)...") end
+    Util.FirePrompt(prompt)
+
+    local tStealth = tick()
+    while tick() - tStealth < 1.2 do
+        local open, gui = IndexHunter.IsIndexUIOpen()
+        if open then
+            task.wait(0.25)
+            return true, gui
+        end
+        task.wait(0.2)
+    end
+
+    -- Fallback: Jika server membatasi jarak Index, baru mendekat ke tengah plaza
     local part = prompt.Parent:IsA("BasePart") and prompt.Parent or prompt.Parent:FindFirstChildWhichIsA("BasePart")
     if part and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        if statusCallback then statusCallback("Teleport ke Papan Index tengah...") end
+        if statusCallback then statusCallback("Mendekat ke Papan Index tengah...") end
         LocalPlayer.Character.HumanoidRootPart.CFrame = part.CFrame * CFrame.new(0, 3, 3.5)
         task.wait(0.35)
 
