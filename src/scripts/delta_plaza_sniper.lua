@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.2"
+local SCRIPT_VERSION = "v2.3"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -1031,7 +1031,46 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         end
     else
         if statusCallback then statusCallback("⚠️ Tombol 'Find Seller' belum terlihat di layar!") end
-        Util.Notify("Perhatian", "Silakan klik item " .. targetItemName .. " di papan Index secara manual lalu klik Find Seller!")
+        Util.Notify("Perhatian", "itemClicked=" .. tostring(itemClicked) .. ". Silakan klik " .. targetItemName .. " manual dulu!")
+
+        -- Auto-Diagnostik Struktur Kartu Item jika gagal klik
+        pcall(function()
+            local tLower = targetItemName:lower()
+            for _, desc in ipairs(indexGui:GetDescendants()) do
+                if (desc:IsA("TextLabel") or desc:IsA("TextButton")) and Util.IsActuallyVisible(desc) then
+                    local txt = (desc.Text or ""):lower()
+                    if txt:find(tLower, 1, true) then
+                        local p1 = desc.Parent
+                        local p2 = p1 and p1.Parent
+                        Util.Notify("DIAG CARD", string.format("%s(%s) | P1:%s(%s) | P2:%s(%s)",
+                            desc.Name, desc.ClassName,
+                            p1 and p1.Name or "-", p1 and p1.ClassName or "-",
+                            p2 and p2.Name or "-", p2 and p2.ClassName or "-"
+                        ), true)
+
+                        local sigs = {}
+                        if getconnections then
+                            local checkList = {desc, p1, p2}
+                            if p1 then
+                                for _, c in ipairs(p1:GetDescendants()) do table.insert(checkList, c) end
+                            end
+                            for _, obj in ipairs(checkList) do
+                                for _, sName in ipairs({"MouseButton1Click", "Activated", "MouseButton1Down", "InputBegan", "TouchTap"}) do
+                                    pcall(function()
+                                        local conns = getconnections(obj[sName])
+                                        if #conns > 0 then
+                                            table.insert(sigs, obj.Name .. "." .. sName .. "(" .. #conns .. ")")
+                                        end
+                                    end)
+                                end
+                            end
+                        end
+                        Util.Notify("DIAG SIGS", #sigs > 0 and table.concat(sigs, ", "):sub(1, 90) or "No conns", true)
+                        break
+                    end
+                end
+            end
+        end)
     end
 
     IndexHunter.IsHunting = false
