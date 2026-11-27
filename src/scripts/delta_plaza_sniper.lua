@@ -212,6 +212,25 @@ function Util.FirePrompt(prompt)
     return true
 end
 
+-- [Cek apakah GuiObject benar-benar terlihat di layar (semua ancestor Visible & Enabled)]
+function Util.IsActuallyVisible(obj)
+    if not obj or not obj.Parent then return false end
+    local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+    local cur = obj
+    while cur and cur ~= pGui do
+        if cur:IsA("GuiObject") and not cur.Visible then
+            return false
+        elseif cur:IsA("ScreenGui") and not cur.Enabled then
+            return false
+        end
+        cur = cur.Parent
+    end
+    if obj:IsA("GuiObject") and (obj.AbsoluteSize.X <= 0 or obj.AbsoluteSize.Y <= 0) then
+        return false
+    end
+    return true
+end
+
 -- [Sistem Titipan Auto-Execute Teleport Universal]
 function Util.QueueOnTeleport(code)
     local fn = queue_on_teleport 
@@ -664,14 +683,14 @@ function IndexHunter.FindIndexTerminal()
     return bestPrompt
 end
 
--- Deteksi apakah UI INDEX sudah terbuka di layar
+-- Deteksi apakah UI INDEX benar-benar sedang terbuka di layar
 function IndexHunter.IsIndexUIOpen()
     local pGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not pGui then return false, nil end
     for _, gui in ipairs(pGui:GetChildren()) do
-        if gui:IsA("ScreenGui") and gui.Enabled then
+        if gui:IsA("ScreenGui") and gui.Enabled and gui.Name ~= "BBSniperCleanV1" then
             for _, desc in ipairs(gui:GetDescendants()) do
-                if (desc:IsA("TextLabel") or desc:IsA("TextBox")) and desc.Visible then
+                if (desc:IsA("TextLabel") or desc:IsA("TextBox")) and Util.IsActuallyVisible(desc) then
                     local t = (desc:IsA("TextLabel") and desc.Text or desc.PlaceholderText or ""):lower()
                     if t == "index" or t:find("search for an item") then
                         return true, gui
@@ -764,7 +783,7 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
 
     -- [1] Cari TextBox pencarian ("Search for an item")
     for _, desc in ipairs(indexGui:GetDescendants()) do
-        if desc:IsA("TextBox") and desc.Visible then
+        if desc:IsA("TextBox") and Util.IsActuallyVisible(desc) then
             local ph = (desc.PlaceholderText or ""):lower()
             local n = desc.Name:lower()
             if ph:find("search") or n:find("search") or ph:find("item") then
@@ -779,7 +798,7 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         local parentBox = searchBox.Parent
         if parentBox then
             for _, sibling in ipairs(parentBox:GetDescendants()) do
-                if (sibling:IsA("ImageButton") or sibling:IsA("TextButton")) and sibling.Visible and sibling ~= searchBox then
+                if (sibling:IsA("ImageButton") or sibling:IsA("TextButton")) and Util.IsActuallyVisible(sibling) and sibling ~= searchBox then
                     searchBtn = sibling
                     break
                 end
@@ -787,7 +806,9 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         end
 
         if statusCallback then statusCallback("Mengetik '" .. targetItemName .. "'...") end
+        pcall(function() searchBox:CaptureFocus() end)
         searchBox.Text = targetItemName
+        pcall(function() searchBox:ReleaseFocus(true) end)
         pcall(function()
             if searchBox.FocusLost then searchBox.FocusLost:Fire(true) end
         end)
@@ -797,41 +818,57 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         task.wait(0.7)
     end
 
-    -- [2] Cari kartu item di hasil pencarian (misal: "Rose Gift" / targetItemName)
-    if statusCallback then statusCallback("Memilih item '" .. targetItemName .. "'...") end
-    local itemClicked = false
-    local tLower = targetItemName:lower()
-
-    for _, desc in ipairs(indexGui:GetDescendants()) do
-        if desc:IsA("TextLabel") and desc.Visible then
-            local txt = desc.Text:lower()
-            if txt == tLower or (txt:find(tLower, 1, true) and not txt:find("search")) then
-                -- Cari tombol parent atau ancestor terdekat
-                local cur = desc
-                while cur and cur ~= indexGui do
-                    if cur:IsA("TextButton") or cur:IsA("ImageButton") then
-                        Util.SafeClickButton(cur)
-                        itemClicked = true
-                        break
+    -- Helper untuk klik item dari hasil grid
+    local function tryClickTargetItem()
+        local tLower = targetItemName:lower()
+        for _, desc in ipairs(indexGui:GetDescendants()) do
+            if desc:IsA("TextLabel") and Util.IsActuallyVisible(desc) then
+                local txt = desc.Text:lower()
+                if txt == tLower or (txt:find(tLower, 1, true) and not txt:find("search")) then
+                    local cur = desc
+                    while cur and cur ~= indexGui do
+                        if cur:IsA("TextButton") or cur:IsA("ImageButton") then
+                            Util.SafeClickButton(cur)
+                            return true
+                        end
+                        cur = cur.Parent
                     end
-                    cur = cur.Parent
                 end
-                if itemClicked then break end
             end
         end
+        return false
     end
 
+    -- [2] Cari kartu item di hasil pencarian (jika perlu pindah tab Swords / Explosions / Emotes)
+    if statusCallback then statusCallback("Memilih item '" .. targetItemName .. "'...") end
+    local itemClicked = tryClickTargetItem()
+
     if not itemClicked then
-        -- Fallback: coba klik tombol pertama di daftar hasil jika ada
-        for _, desc in ipairs(indexGui:GetDescendants()) do
-            if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and desc.Visible then
-                local n = desc.Name:lower()
-                if n:find("item") or n:find("slot") or n:find("card") or n:find("cell") then
-                    Util.SafeClickButton(desc)
-                    itemClicked = true
-                    break
+        -- Coba pindah tab kategori (Explosions / Swords / Emotes) karena item tertentu ada di tab berbeda
+        local tabNames = { "explosions", "swords", "emotes" }
+        for _, tabKey in ipairs(tabNames) do
+            for _, desc in ipairs(indexGui:GetDescendants()) do
+                if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and Util.IsActuallyVisible(desc) then
+                    local t = (desc:IsA("TextButton") and desc.Text or ""):lower()
+                    for _, lbl in ipairs(desc:GetChildren()) do
+                        if lbl:IsA("TextLabel") then t = t .. " " .. lbl.Text:lower() end
+                    end
+                    if t:find(tabKey) then
+                        Util.SafeClickButton(desc)
+                        task.wait(0.45)
+                        if searchBox then
+                            searchBox.Text = targetItemName
+                            if searchBtn then Util.SafeClickButton(searchBtn) end
+                            task.wait(0.45)
+                        end
+                        if tryClickTargetItem() then
+                            itemClicked = true
+                            break
+                        end
+                    end
                 end
             end
+            if itemClicked then break end
         end
     end
 
@@ -842,7 +879,7 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
     local findSellerBtn = nil
 
     for _, desc in ipairs(indexGui:GetDescendants()) do
-        if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and desc.Visible then
+        if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and Util.IsActuallyVisible(desc) then
             local t = (desc:IsA("TextButton") and desc.Text or ""):lower()
             local n = desc.Name:lower()
             for _, lbl in ipairs(desc:GetChildren()) do
@@ -858,9 +895,9 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
     if not findSellerBtn then
         -- Periksa seluruh PlayerGui jika tombol berada di luar indexGui
         for _, gui in ipairs(pGui:GetChildren()) do
-            if gui:IsA("ScreenGui") and gui.Enabled and gui ~= indexGui then
+            if gui:IsA("ScreenGui") and gui.Enabled and gui ~= indexGui and gui.Name ~= "BBSniperCleanV1" then
                 for _, desc in ipairs(gui:GetDescendants()) do
-                    if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and desc.Visible then
+                    if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and Util.IsActuallyVisible(desc) then
                         local t = (desc:IsA("TextButton") and desc.Text or ""):lower()
                         for _, lbl in ipairs(desc:GetChildren()) do
                             if lbl:IsA("TextLabel") then t = t .. " " .. lbl.Text:lower() end
