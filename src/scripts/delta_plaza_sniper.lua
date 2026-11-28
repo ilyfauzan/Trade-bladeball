@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.14"
+local SCRIPT_VERSION = "v2.15"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -374,9 +374,15 @@ function Reporter.SendAlert(deals)
     cleanSentCache()
 
     task.spawn(function()
-        local sentCount = 0
+        local sentOther = 0
+        local sentRose = 0
         for i, deal in ipairs(deals) do
-            if sentCount >= 10 then break end
+            local isRoseGift = (deal.Name:lower():find("rose gift") ~= nil)
+            if isRoseGift then
+                if sentRose >= 10 then continue end
+            else
+                if sentOther >= 10 then continue end
+            end
 
             -- [DEDUP] Buat key unik per deal berdasarkan item+seller+harga
             local dedupKey = string.lower(tostring(deal.Name)) .. "|" .. tostring(deal.Seller) .. "|" .. tostring(deal.Price)
@@ -387,11 +393,14 @@ function Reporter.SendAlert(deals)
                 continue
             end
             Reporter._sentCache[dedupKey] = now
-            sentCount = sentCount + 1
+            if isRoseGift then
+                sentRose = sentRose + 1
+            else
+                sentOther = sentOther + 1
+            end
 
             local isHighTier10k20k = (deal.RAP >= 10000 and deal.RAP <= 20000)
             local isUnder100Plus = (deal.Profit >= 100)
-            local isRoseGift = (deal.Name:lower():find("rose gift") ~= nil)
             local targetWebhook = DISCORD_WEBHOOK_URL
 
             -- Rose Gift → webhook khusus (channel terpisah)
@@ -715,7 +724,7 @@ function IndexHunter.PrepareTeleportQueue()
                 getgenv().BB_TARGET = "]] .. targetItem .. [["
                 getgenv().BB_AUTO_HUNT = ]] .. autoHunt .. [[
             end
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/scripts/delta_plaza_sniper.lua"))()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/scripts/delta_plaza_sniper.lua?t=" .. tostring(os.time())))()
         end)
     ]]
     Util.QueueOnTeleport(payload)
