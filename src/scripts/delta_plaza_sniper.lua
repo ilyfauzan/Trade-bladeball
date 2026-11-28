@@ -15,7 +15,20 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.16"
+local SCRIPT_VERSION = "v2.17"
+
+-- [SINGLETON GUARD: Pastikan hanya 1 instance script terbaru yang aktif]
+local INSTANCE_ID = tostring(os.clock()) .. "_" .. tostring(math.random(100000, 999999))
+if getgenv then
+    getgenv().BB_ACTIVE_INSTANCE = INSTANCE_ID
+    getgenv().BB_SENT_CACHE = getgenv().BB_SENT_CACHE or {}
+end
+local function isCurrentInstance()
+    if getgenv and getgenv().BB_ACTIVE_INSTANCE then
+        return getgenv().BB_ACTIVE_INSTANCE == INSTANCE_ID
+    end
+    return true
+end
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -352,52 +365,55 @@ task.spawn(Util.SyncBbValues)
 
 -- [3] MODULE: DISCORD WEBHOOK REPORTER
 local Reporter = {
-    -- Cache untuk anti-double: key = "itemName|seller|price", value = timestamp terakhir dikirim
-    _sentCache = {}
+    -- Cache global lintas-instance untuk anti-double: key = "jobId|itemName|seller|price"
+    _sentCache = (getgenv and getgenv().BB_SENT_CACHE) or {}
 }
 
--- Bersihkan cache yang sudah lebih dari 90 detik (auto-GC)
+-- Bersihkan cache yang sudah lebih dari 120 detik (auto-GC)
 local function cleanSentCache()
     local now = tick()
     for key, ts in pairs(Reporter._sentCache) do
-        if now - ts > 90 then
+        if now - ts > 120 then
             Reporter._sentCache[key] = nil
         end
     end
 end
 
 function Reporter.SendAlert(deals)
+    if not isCurrentInstance() then return end
     if not deals or #deals == 0 then return end
     local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
     if not req then return end
 
     cleanSentCache()
 
+    -- Filter & tandai dedup secara sinkron SEBELUM task.spawn agar tidak race condition
+    local toSend = {}
+    local sentOther = 0
+    local sentRose = 0
+    local now = tick()
+    for _, deal in ipairs(deals) do
+        local isRoseGift = (deal.Name:lower():find("rose gift") ~= nil)
+        if (isRoseGift and sentRose < 10) or (not isRoseGift and sentOther < 10) then
+            local dedupKey = tostring(JobId) .. "|" .. string.lower(tostring(deal.Name)) .. "|" .. tostring(deal.Seller) .. "|" .. tostring(deal.Price)
+            if not (Reporter._sentCache[dedupKey] and (now - Reporter._sentCache[dedupKey]) < 120) then
+                Reporter._sentCache[dedupKey] = now
+                if isRoseGift then
+                    sentRose = sentRose + 1
+                else
+                    sentOther = sentOther + 1
+                end
+                table.insert(toSend, deal)
+            end
+        end
+    end
+
+    if #toSend == 0 then return end
+
     task.spawn(function()
-        local sentOther = 0
-        local sentRose = 0
-        for i, deal in ipairs(deals) do
+        for _, deal in ipairs(toSend) do
+            if not isCurrentInstance() then break end
             local isRoseGift = (deal.Name:lower():find("rose gift") ~= nil)
-            if isRoseGift then
-                if sentRose >= 10 then continue end
-            else
-                if sentOther >= 10 then continue end
-            end
-
-            -- [DEDUP] Buat key unik per deal berdasarkan item+seller+harga
-            local dedupKey = string.lower(tostring(deal.Name)) .. "|" .. tostring(deal.Seller) .. "|" .. tostring(deal.Price)
-            local now = tick()
-
-            -- Skip jika deal yang sama sudah dikirim dalam 90 detik terakhir
-            if Reporter._sentCache[dedupKey] and (now - Reporter._sentCache[dedupKey]) < 90 then
-                continue
-            end
-            Reporter._sentCache[dedupKey] = now
-            if isRoseGift then
-                sentRose = sentRose + 1
-            else
-                sentOther = sentOther + 1
-            end
 
             local isHighTier10k20k = (deal.RAP >= 10000 and deal.RAP <= 20000)
             local isUnder100Plus = (deal.Profit >= 100)
@@ -771,13 +787,18 @@ local IndexHunter = {
 
 -- Menangani auto-execute script ke server baru saat teleport
 function IndexHunter.PrepareTeleportQueue()
-    -- Simpan nama item target ke getgenv agar terbawa ke server baru
+    if not isCurrentInstance() then return end
+    -- Simpan nama item target & status auto hunt terbaru ke getgenv
     pcall(function()
         if getgenv then
             getgenv().BB_TARGET = Config.TargetItemName
-            getgenv().BB_AUTO_HUNT = Config.AutoHuntEnabled  -- simpan status auto hunt
+            getgenv().BB_AUTO_HUNT = Config.AutoHuntEnabled
         end
     end)
+
+    -- Hindari menumpuk payload berkali-kali ke queue_on_teleport di server yang sama
+    if IndexHunter._teleportQueued then return end
+    IndexHunter._teleportQueued = true
 
     local targetItem = Config.TargetItemName
     local autoHunt = Config.AutoHuntEnabled and "true" or "false"
