@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.22"
+local SCRIPT_VERSION = "v2.23"
 
 -- [SINGLETON GUARD: Pastikan hanya 1 instance script terbaru yang aktif]
 local INSTANCE_ID = tostring(os.clock()) .. "_" .. tostring(math.random(100000, 999999))
@@ -448,7 +448,12 @@ function Reporter.SendAlert(deals)
                 embedColor = 3447003
             end
 
-            local profitText = string.format("+%s tokens (-%d%%)", Util.FormatNumber(deal.Profit), deal.Discount)
+            local profitText
+            if deal.Profit >= 0 then
+                profitText = string.format("+%s tokens (-%d%%)", Util.FormatNumber(deal.Profit), deal.Discount)
+            else
+                profitText = string.format("%s tokens (+%d%% di atas RAP)", Util.FormatNumber(deal.Profit), math.abs(deal.Discount))
+            end
             local timeStr = os.date("%H:%M:%S WIB")
 
             local payload = HttpService:JSONEncode({
@@ -581,13 +586,27 @@ function Reporter.SendAllBooths(allItems)
     if #embedsToSend == 0 then return end
 
     task.spawn(function()
-        -- Kirim batch maksimal 10 embed per 1 HTTP POST agar cepat & tidak kena limit Discord
-        for idx = 1, #embedsToSend, 10 do
-            if not isCurrentInstance() then break end
-            local batch = {}
-            for j = idx, math.min(idx + 9, #embedsToSend) do
-                table.insert(batch, embedsToSend[j])
+        -- Kirim batch maksimal 10 embed DAN total karakter <= 5200 per POST (limit Discord = 6000 chars)
+        local batches = {}
+        local curBatch = {}
+        local curChars = 0
+
+        for _, emb in ipairs(embedsToSend) do
+            local embLen = #(emb.title or "") + #(emb.description or "") + #((emb.footer and emb.footer.text) or "") + 60
+            if (#curBatch >= 10) or (#curBatch > 0 and (curChars + embLen) > 5200) then
+                table.insert(batches, curBatch)
+                curBatch = {}
+                curChars = 0
             end
+            table.insert(curBatch, emb)
+            curChars = curChars + embLen
+        end
+        if #curBatch > 0 then
+            table.insert(batches, curBatch)
+        end
+
+        for _, batch in ipairs(batches) do
+            if not isCurrentInstance() then break end
 
             local payload = HttpService:JSONEncode({
                 username = "Blade Ball Full Booth Scanner",
@@ -606,16 +625,21 @@ function Reporter.SendAllBooths(allItems)
             local code = okReq and res and (res.StatusCode or res.Status) or 0
             if code == 429 then
                 task.wait(2.0)
-                pcall(function()
-                    req({
+                okReq, res = pcall(function()
+                    return req({
                         Url = DISCORD_WEBHOOK_URL,
                         Method = "POST",
                         Headers = { ["Content-Type"] = "application/json" },
                         Body = payload
                     })
                 end)
+                code = okReq and res and (res.StatusCode or res.Status) or 0
             end
-            task.wait(0.6)
+
+            if not okReq or code >= 400 then
+                Util.Notify("⚠️ Full Scan Webhook", string.format("Batch gagal HTTP %s", tostring(code)))
+            end
+            task.wait(0.65)
         end
     end)
 end
@@ -775,9 +799,9 @@ function Scanner.IsQualified(rap, price, itemName, category)
         return true, true, special
     end
 
-    -- Cek 10k-20k
-    if rap and rap >= 10000 and rap <= 20000 and price <= 22000 then
-        return true, true, { Reason = "💎 High-Tier 10k-20k" }
+    -- Cek 10k-20k (hanya jika harga <= RAP agar item overpriced tidak masuk highlight deal)
+    if rap and rap >= 10000 and rap <= 20000 and price <= rap then
+        return true, false, { Reason = "💎 High-Tier 10k-20k" }
     end
 
     -- Jika ini item Target yang sedang diburu, laporkan ke channel target jika harga wajar (<= RAP * 1.10)
