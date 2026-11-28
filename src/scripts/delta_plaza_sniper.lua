@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.18"
+local SCRIPT_VERSION = "v2.19"
 
 -- [SINGLETON GUARD: Pastikan hanya 1 instance script terbaru yang aktif]
 local INSTANCE_ID = tostring(os.clock()) .. "_" .. tostring(math.random(100000, 999999))
@@ -360,7 +360,9 @@ function Util.SyncBbValues()
             end
         end)
     end
+    Util.IsSynced = true
 end
+Util.IsSynced = false
 task.spawn(Util.SyncBbValues)
 
 -- [3] MODULE: DISCORD WEBHOOK REPORTER
@@ -466,8 +468,8 @@ function Reporter.SendAlert(deals)
                 }}
             })
 
-            pcall(function()
-                req({
+            local okReq, res = pcall(function()
+                return req({
                     Url = targetWebhook,
                     Method = "POST",
                     Headers = { ["Content-Type"] = "application/json" },
@@ -475,7 +477,26 @@ function Reporter.SendAlert(deals)
                 })
             end)
 
-            task.wait(0.35)
+            -- Retry 1x jika kena rate limit Discord (429)
+            local code = okReq and res and (res.StatusCode or res.Status) or 0
+            if code == 429 then
+                task.wait(1.5)
+                okReq, res = pcall(function()
+                    return req({
+                        Url = targetWebhook,
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = payload
+                    })
+                end)
+                code = okReq and res and (res.StatusCode or res.Status) or 0
+            end
+
+            if not okReq or (code >= 400) then
+                Util.Notify("⚠️ Webhook Gagal", string.format("HTTP %s saat kirim %s", tostring(code), deal.Name))
+            end
+
+            task.wait(0.45)
         end
     end)
 end
@@ -638,6 +659,11 @@ function Scanner.IsQualified(rap, price, itemName, category)
     -- Cek 10k-20k
     if rap and rap >= 10000 and rap <= 20000 and price <= 22000 then
         return true, true, { Reason = "💎 High-Tier 10k-20k" }
+    end
+
+    -- Jika ini item Target yang sedang diburu, laporkan ke channel target jika harga wajar (<= RAP * 1.10)
+    if Reporter.IsTargetItem(itemName) and rap and rap > 0 and price <= math.floor(rap * 1.10) then
+        return true, true, { Reason = "🎯 Item Target Dicari" }
     end
 
     if not rap or rap <= 0 then return false, false, nil end
@@ -1744,9 +1770,15 @@ local ok, err = pcall(function()
         startAutoHuntFn(true)
     end
 
-    -- Auto-Scan saat baru mendarat di server baru (jika aktif oleh QueueOnTeleport)
+    -- Auto-Scan saat baru mendarat di server baru (tunggu sync RAP selesai maks 8 detik)
     task.spawn(function()
-        task.wait(3.5)
+        task.wait(2.0)
+        local tSync = tick()
+        while not Util.IsSynced and tick() - tSync < 8 do
+            task.wait(0.25)
+        end
+        task.wait(0.5)
+        if not isCurrentInstance() then return end
         if Config.AutoScanOnTeleport and JobId ~= Config.LastScannedJobId then
             Config.LastScannedJobId = JobId
             Scanner.ScanAllBooths(function(msg) end)
