@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.21"
+local SCRIPT_VERSION = "v2.22"
 
 -- [SINGLETON GUARD: Pastikan hanya 1 instance script terbaru yang aktif]
 local INSTANCE_ID = tostring(os.clock()) .. "_" .. tostring(math.random(100000, 999999))
@@ -502,6 +502,124 @@ function Reporter.SendAlert(deals)
     end)
 end
 
+-- Kirim SEMUA item hasil scan seluruh booth (dikelompokkan per booth, maks 10 embed/request)
+function Reporter.SendAllBooths(allItems)
+    if not isCurrentInstance() then return end
+    if not allItems or #allItems == 0 then return end
+    local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
+    if not req then return end
+
+    cleanSentCache()
+
+    -- Kelompokkan item per penjual (booth)
+    local bySeller = {}
+    local sellerOrder = {}
+    for _, item in ipairs(allItems) do
+        local s = tostring(item.Seller or "Unknown")
+        if not bySeller[s] then
+            bySeller[s] = {}
+            table.insert(sellerOrder, s)
+        end
+        table.insert(bySeller[s], item)
+    end
+
+    local now = tick()
+    local embedsToSend = {}
+    local timeStr = os.date("%H:%M:%S WIB")
+
+    for _, seller in ipairs(sellerOrder) do
+        local items = bySeller[seller]
+        local dedupKey = tostring(JobId) .. "|ALLBOOTH|" .. seller .. "|" .. tostring(#items)
+        if not (Reporter._sentCache[dedupKey] and (now - Reporter._sentCache[dedupKey]) < 120) then
+            Reporter._sentCache[dedupKey] = now
+
+            local lines = {}
+            local hasDeal = false
+            for _, it in ipairs(items) do
+                if it.IsUnderRap then hasDeal = true end
+                local tag = it.IsUnderRap and "🔥 " or "• "
+                local rapStr = (it.RAP and it.RAP > 0) and Util.FormatNumber(it.RAP) or "?"
+                local diffStr = ""
+                if it.RAP and it.RAP > 0 then
+                    diffStr = (it.Profit >= 0) and string.format(" (+%s)", Util.FormatNumber(it.Profit)) or string.format(" (%s)", Util.FormatNumber(it.Profit))
+                end
+                local line = string.format("%s**%s** (%s) — 💰 `%s` | RAP `%s`%s", tag, it.Name, tostring(it.Category or "?"), Util.FormatNumber(it.Price), rapStr, diffStr)
+                table.insert(lines, line)
+            end
+
+            -- Pecah jika terlalu panjang (> 3500 chars per embed)
+            local chunk = {}
+            local chunkLen = 0
+            local partIdx = 1
+            for _, ln in ipairs(lines) do
+                if chunkLen + #ln + 2 > 3500 and #chunk > 0 then
+                    table.insert(embedsToSend, {
+                        title = string.format("🏪 Booth @%s (Part %d • %d item)", seller, partIdx, #items),
+                        description = table.concat(chunk, "\n"),
+                        color = hasDeal and 65280 or 3447003,
+                        footer = { text = string.format("Blade Ball Full Scan • %s", timeStr) }
+                    })
+                    chunk = {}
+                    chunkLen = 0
+                    partIdx = partIdx + 1
+                end
+                table.insert(chunk, ln)
+                chunkLen = chunkLen + #ln + 1
+            end
+            if #chunk > 0 then
+                local suffix = (partIdx > 1) and string.format(" (Part %d • %d item)", partIdx, #items) or string.format(" (%d item)", #items)
+                table.insert(embedsToSend, {
+                    title = string.format("🏪 Booth @%s%s", seller, suffix),
+                    description = table.concat(chunk, "\n"),
+                    color = hasDeal and 65280 or 3447003,
+                    footer = { text = string.format("Blade Ball Full Scan • %s", timeStr) }
+                })
+            end
+        end
+    end
+
+    if #embedsToSend == 0 then return end
+
+    task.spawn(function()
+        -- Kirim batch maksimal 10 embed per 1 HTTP POST agar cepat & tidak kena limit Discord
+        for idx = 1, #embedsToSend, 10 do
+            if not isCurrentInstance() then break end
+            local batch = {}
+            for j = idx, math.min(idx + 9, #embedsToSend) do
+                table.insert(batch, embedsToSend[j])
+            end
+
+            local payload = HttpService:JSONEncode({
+                username = "Blade Ball Full Booth Scanner",
+                embeds = batch
+            })
+
+            local okReq, res = pcall(function()
+                return req({
+                    Url = DISCORD_WEBHOOK_URL,
+                    Method = "POST",
+                    Headers = { ["Content-Type"] = "application/json" },
+                    Body = payload
+                })
+            end)
+
+            local code = okReq and res and (res.StatusCode or res.Status) or 0
+            if code == 429 then
+                task.wait(2.0)
+                pcall(function()
+                    req({
+                        Url = DISCORD_WEBHOOK_URL,
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = payload
+                    })
+                end)
+            end
+            task.wait(0.6)
+        end
+    end)
+end
+
 -- [4] MODULE: PLAZA BOOTH SCANNER (NO AUTO-BUY)
 local Scanner = {
     IsScanning = false,
@@ -771,6 +889,7 @@ function Scanner.ScanAllBooths(statusCallback)
 
                 if scrollList and playersBooth and playersBooth.Visible then
                     scannedBooths = scannedBooths + 1
+                    task.wait(0.15)
                     local sellerName = item.Owner
                     local top = playersBooth:FindFirstChild("Top")
                     if top and top:FindFirstChild("PlayerName") then
@@ -778,16 +897,19 @@ function Scanner.ScanAllBooths(statusCallback)
                     end
 
                     for _, frame in ipairs(scrollList:GetChildren()) do
-                        if frame:IsA("Frame") and frame.Name ~= "Frame" then
+                        if (frame:IsA("Frame") or frame:IsA("GuiButton")) and frame.Name ~= "Frame" then
                             local itemName, price = "", 0
                             local itemBtn = frame:FindFirstChild("Frame")
-                            if itemBtn and itemBtn:FindFirstChild("ItemName") then
-                                itemName = itemBtn.ItemName.Text or ""
+                            local nameLbl = (itemBtn and itemBtn:FindFirstChild("ItemName")) or frame:FindFirstChild("ItemName", true)
+                            if nameLbl and nameLbl:IsA("TextLabel") then
+                                itemName = nameLbl.Text or ""
                             end
 
                             local buyBtn = frame:FindFirstChild("BuyButton")
-                            if buyBtn and buyBtn:FindFirstChild("List") and buyBtn.List:FindFirstChild("Amount") then
-                                price = Util.ParsePrice(buyBtn.List.Amount.Text)
+                            local amtLbl = (buyBtn and buyBtn:FindFirstChild("List") and buyBtn.List:FindFirstChild("Amount"))
+                                or (buyBtn and buyBtn:FindFirstChild("Amount", true))
+                            if amtLbl and amtLbl:IsA("TextLabel") then
+                                price = Util.ParsePrice(amtLbl.Text)
                             end
 
                             if #itemName > 0 and itemName ~= "ItemName" and price > 0 then
@@ -843,17 +965,27 @@ function Scanner.ScanAllBooths(statusCallback)
         end)
     end
 
+    table.sort(allFound, function(a, b)
+        if a.IsUnderRap ~= b.IsUnderRap then return a.IsUnderRap end
+        return a.Profit > b.Profit
+    end)
     table.sort(foundDeals, function(a, b) return a.Profit > b.Profit end)
-    Scanner.CurrentDeals = foundDeals
+    -- Tampilkan SEMUA item hasil scan di UI (deal under-RAP diurutkan paling atas)
+    Scanner.CurrentDeals = allFound
     Scanner.AllListings = allFound
     Scanner.IsScanning = false
 
+    -- Kirim SEMUA item hasil scan ke Discord (dikelompokkan per booth)
+    if #allFound > 0 then
+        Reporter.SendAllBooths(allFound)
+    end
+
     if #foundDeals > 0 then
         Util.PlayChime()
-        Util.Notify("🔥 " .. #foundDeals .. " DEAL UNDER RAP!", string.format("(%d/%d booth, %d item) Terbaik: %s +%s", scannedBooths, #activeStands, #allFound, foundDeals[1].Name, Util.FormatNumber(foundDeals[1].Profit)), true)
+        Util.Notify("🔥 " .. #foundDeals .. " DEAL UNDER RAP!", string.format("(%d/%d booth, %d item dikirim ke DC) Terbaik: %s +%s", scannedBooths, #activeStands, #allFound, foundDeals[1].Name, Util.FormatNumber(foundDeals[1].Profit)), true)
         Reporter.SendAlert(foundDeals)
     else
-        Util.Notify("Scan Selesai", string.format("Memeriksa %d/%d booth (%d item). Tidak ada under RAP.", scannedBooths, #activeStands, #allFound))
+        Util.Notify("Scan Selesai", string.format("Memeriksa %d/%d booth (%d item dikirim ke DC).", scannedBooths, #activeStands, #allFound))
     end
 
     if statusCallback then statusCallback("Scan Selesai!") end
