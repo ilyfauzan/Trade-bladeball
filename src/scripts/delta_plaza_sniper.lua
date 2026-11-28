@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.23"
+local SCRIPT_VERSION = "v2.24"
 
 -- [SINGLETON GUARD: Pastikan hanya 1 instance script terbaru yang aktif]
 local INSTANCE_ID = tostring(os.clock()) .. "_" .. tostring(math.random(100000, 999999))
@@ -448,8 +448,11 @@ function Reporter.SendAlert(deals)
                 embedColor = 3447003
             end
 
+            local rapText = (deal.RAP and deal.RAP > 0) and (Util.FormatNumber(deal.RAP) .. " tokens") or "Tidak diketahui"
             local profitText
-            if deal.Profit >= 0 then
+            if not deal.RAP or deal.RAP <= 0 then
+                profitText = "-"
+            elseif deal.Profit >= 0 then
                 profitText = string.format("+%s tokens (-%d%%)", Util.FormatNumber(deal.Profit), deal.Discount)
             else
                 profitText = string.format("%s tokens (+%d%% di atas RAP)", Util.FormatNumber(deal.Profit), math.abs(deal.Discount))
@@ -464,7 +467,7 @@ function Reporter.SendAlert(deals)
                     fields = {
                         { name = "🗡️ Nama Item", value = string.format("**%s** (%s)", deal.Name, deal.Category), inline = true },
                         { name = "💰 Harga Booth", value = string.format("**%s** tokens", Util.FormatNumber(deal.Price)), inline = true },
-                        { name = "📊 Nilai RAP", value = string.format("**%s** tokens", Util.FormatNumber(deal.RAP)), inline = true },
+                        { name = "📊 Nilai RAP", value = string.format("**%s**", rapText), inline = true },
                         { name = "📈 Estimasi Untung", value = string.format("**%s**", profitText), inline = true },
                         { name = "👤 Penjual", value = string.format("@%s", deal.Seller), inline = true },
                         { name = "🕒 Jam Temuan", value = string.format("`%s`", timeStr), inline = true }
@@ -792,31 +795,22 @@ end
 function Scanner.IsQualified(rap, price, itemName, category)
     if not price or price <= 0 then return false, false, nil end
 
-    -- Cek Special Watchlist
-    local kSpaced = tostring(itemName or ""):lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
-    local special = SPECIAL_WATCHLIST[kSpaced] or SPECIAL_WATCHLIST[tostring(itemName or ""):lower():gsub("%s+", "")]
-    if special and price <= special.MaxPrice then
-        return true, true, special
-    end
-
-    -- Cek 10k-20k (hanya jika harga <= RAP agar item overpriced tidak masuk highlight deal)
-    if rap and rap >= 10000 and rap <= 20000 and price <= rap then
-        return true, false, { Reason = "💎 High-Tier 10k-20k" }
-    end
-
-    -- Jika ini item Target yang sedang diburu, laporkan ke channel target jika harga wajar (<= RAP * 1.10)
-    if Reporter.IsTargetItem(itemName) and rap and rap > 0 and price <= math.floor(rap * 1.10) then
+    -- 1. Item Target yang sedang dicari SELALU dikirim ke webhook target (walau tidak under RAP)
+    if Reporter.IsTargetItem(itemName) then
         return true, true, { Reason = "🎯 Item Target Dicari" }
     end
 
     if not rap or rap <= 0 then return false, false, nil end
     local profit = rap - price
-    if profit <= 0 then return false, false, nil end
 
-    if rap >= 200 and rap < 300 then
-        return (profit >= Config.MinProfit200), false, nil
-    elseif rap >= 300 then
-        return (profit >= Config.MinProfit300), false, nil
+    -- 2. Selain item target: HANYA kirim jika benar-benar UNDER RAP >= 100 token!
+    if profit >= 100 then
+        local kSpaced = tostring(itemName or ""):lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+        local special = SPECIAL_WATCHLIST[kSpaced] or SPECIAL_WATCHLIST[tostring(itemName or ""):lower():gsub("%s+", "")]
+        if special and price <= special.MaxPrice then
+            return true, true, special
+        end
+        return true, false, nil
     end
 
     return false, false, nil
@@ -989,27 +983,17 @@ function Scanner.ScanAllBooths(statusCallback)
         end)
     end
 
-    table.sort(allFound, function(a, b)
-        if a.IsUnderRap ~= b.IsUnderRap then return a.IsUnderRap end
-        return a.Profit > b.Profit
-    end)
     table.sort(foundDeals, function(a, b) return a.Profit > b.Profit end)
-    -- Tampilkan SEMUA item hasil scan di UI (deal under-RAP diurutkan paling atas)
-    Scanner.CurrentDeals = allFound
+    Scanner.CurrentDeals = foundDeals
     Scanner.AllListings = allFound
     Scanner.IsScanning = false
 
-    -- Kirim SEMUA item hasil scan ke Discord (dikelompokkan per booth)
-    if #allFound > 0 then
-        Reporter.SendAllBooths(allFound)
-    end
-
     if #foundDeals > 0 then
         Util.PlayChime()
-        Util.Notify("🔥 " .. #foundDeals .. " DEAL UNDER RAP!", string.format("(%d/%d booth, %d item dikirim ke DC) Terbaik: %s +%s", scannedBooths, #activeStands, #allFound, foundDeals[1].Name, Util.FormatNumber(foundDeals[1].Profit)), true)
+        Util.Notify("🔥 " .. #foundDeals .. " DEAL DITEMUKAN!", string.format("(%d/%d booth, %d item) Terbaik: %s +%s", scannedBooths, #activeStands, #allFound, foundDeals[1].Name, Util.FormatNumber(foundDeals[1].Profit)), true)
         Reporter.SendAlert(foundDeals)
     else
-        Util.Notify("Scan Selesai", string.format("Memeriksa %d/%d booth (%d item dikirim ke DC).", scannedBooths, #activeStands, #allFound))
+        Util.Notify("Scan Selesai", string.format("Memeriksa %d/%d booth (%d item). Tidak ada under >=100 RAP / target.", scannedBooths, #activeStands, #allFound))
     end
 
     if statusCallback then statusCallback("Scan Selesai!") end
