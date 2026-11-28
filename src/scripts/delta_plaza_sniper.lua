@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.7"
+local SCRIPT_VERSION = "v2.8"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -996,11 +996,11 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         task.wait(0.5)
 
         -- [4] MENANGANI NOTIFICATION POPUP ("A seller has been found! Would you like to teleport to their server?")
-        if statusCallback then statusCallback("⏳ Menunggu konfirmasi seller (maks 30 dtk)...") end
+        if statusCallback then statusCallback("⏳ Menunggu konfirmasi seller (maks 18 dtk)...") end
         local confirmed = false
         local waitStart = tick()
 
-        while tick() - waitStart < 30 do
+        while tick() - waitStart < 18 do
             task.wait(0.3)
             -- Cari dialog Notification di seluruh ScreenGui aktif
             for _, gui in ipairs(pGui:GetChildren()) do
@@ -1038,10 +1038,25 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
                 end
                 if confirmed then break end
             end
+            if confirmed then break end
         end
 
-        if not confirmed and statusCallback then
-            statusCallback("⚠️ Waktu pencarian seller habis atau popup belum muncul.")
+        if not confirmed then
+            if statusCallback then statusCallback("⚠️ Pencarian seller timeout (18 dtk). Menutup Index...") end
+            Util.Notify("⚠️ Find Seller Timeout", "Server game terlalu lama merespon / tidak ada seller untuk " .. targetItemName .. ".")
+            -- Tutup UI Index (tombol X merah) agar loading spinner tidak nyangkut di layar
+            pcall(function()
+                for _, btn in ipairs(indexGui:GetDescendants()) do
+                    if (btn:IsA("TextButton") or btn:IsA("ImageButton")) and Util.IsActuallyVisible(btn) then
+                        local t = (btn:IsA("TextButton") and btn.Text or ""):lower()
+                        local n = btn.Name:lower()
+                        if t == "x" or n:find("close") or n:find("exit") then
+                            Util.SafeClickButton(btn)
+                            break
+                        end
+                    end
+                end
+            end)
         end
     else
         if statusCallback then statusCallback("⚠️ Tombol 'Find Seller' belum terlihat di layar!") end
