@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.24"
+local SCRIPT_VERSION = "v2.25"
 
 -- [SINGLETON GUARD: Pastikan hanya 1 instance script terbaru yang aktif]
 local INSTANCE_ID = tostring(os.clock()) .. "_" .. tostring(math.random(100000, 999999))
@@ -510,6 +510,44 @@ function Reporter.SendAlert(deals)
     end)
 end
 
+-- Kirim ringkasan ke Discord jika scan selesai tapi tidak ada deal / target
+function Reporter.SendScanSummary(scannedBooths, totalBooths, totalItems)
+    if not isCurrentInstance() then return end
+    local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
+    if not req then return end
+
+    cleanSentCache()
+    local dedupKey = tostring(JobId) .. "|SUMMARY|" .. tostring(scannedBooths) .. "|" .. tostring(totalItems)
+    local now = tick()
+    if Reporter._sentCache[dedupKey] and (now - Reporter._sentCache[dedupKey]) < 60 then
+        return
+    end
+    Reporter._sentCache[dedupKey] = now
+
+    task.spawn(function()
+        if not isCurrentInstance() then return end
+        local timeStr = os.date("%H:%M:%S WIB")
+        local payload = HttpService:JSONEncode({
+            username = "Blade Ball Plaza Radar",
+            embeds = {{
+                title = "🔍 Scan Selesai",
+                description = string.format("Memeriksa **%d/%d booth** (**%d item**).\nTidak ada under >=100 RAP / target.", scannedBooths, totalBooths, totalItems),
+                color = 6449525,
+                footer = { text = string.format("Blade Ball Plaza Sniper %s • %s", SCRIPT_VERSION, timeStr) }
+            }}
+        })
+
+        pcall(function()
+            req({
+                Url = DISCORD_WEBHOOK_URL,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = payload
+            })
+        end)
+    end)
+end
+
 -- Kirim SEMUA item hasil scan seluruh booth (dikelompokkan per booth, maks 10 embed/request)
 function Reporter.SendAllBooths(allItems)
     if not isCurrentInstance() then return end
@@ -994,6 +1032,7 @@ function Scanner.ScanAllBooths(statusCallback)
         Reporter.SendAlert(foundDeals)
     else
         Util.Notify("Scan Selesai", string.format("Memeriksa %d/%d booth (%d item). Tidak ada under >=100 RAP / target.", scannedBooths, #activeStands, #allFound))
+        Reporter.SendScanSummary(scannedBooths, #activeStands, #allFound)
     end
 
     if statusCallback then statusCallback("Scan Selesai!") end
