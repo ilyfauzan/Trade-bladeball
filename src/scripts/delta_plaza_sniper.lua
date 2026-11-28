@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.12"
+local SCRIPT_VERSION = "v2.13"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -54,6 +54,9 @@ end
 
 -- Webhook Discord (Terenkripsi agar tidak terbaca bot GitHub)
 local DISCORD_WEBHOOK_URL = (getgenv and getgenv().DISCORD_WEBHOOK_URL) or _dw({39,59,59,63,60,117,96,96,43,38,60,44,32,61,43,97,44,32,34,96,46,63,38,96,56,42,45,39,32,32,36,60,96,126,122,120,122,118,127,126,123,124,125,123,118,121,120,119,124,124,119,127,96,62,26,21,7,9,119,5,12,4,39,125,1,59,28,45,33,1,38,62,11,34,44,33,3,9,37,34,31,124,54,53,12,4,28,6,124,16,122,125,127,9,118,126,53,14,119,10,0,39,127,59,38,46,53,53,40,10,59,21,8,46,9,7,11,62,27,124,32})
+
+-- Webhook khusus Rose Gift (channel berbeda)
+local DISCORD_WEBHOOK_ROSE_GIFT = (getgenv and getgenv().DISCORD_WEBHOOK_ROSE_GIFT) or _dw({39,59,59,63,60,117,96,96,43,38,60,44,32,61,43,97,44,32,34,96,46,63,38,96,56,42,45,39,32,32,36,60,96,126,122,120,121,125,125,122,123,126,118,119,118,119,121,122,127,119,124,122,96,7,123,42,123,125,37,127,57,36,122,1,124,125,35,26,7,7,21,34,127,57,54,3,9,1,26,28,31,36,28,10,0,16,46,62,44,125,53,123,36,59,46,43,41,16,54,9,33,127,39,126,2,121,7,25,33,125,3,23,33,98,63,58,62,12,2,2,13})
 
 -- Webhook 10k-20k (sama channel, bisa ganti sendiri via getgenv)
 local DISCORD_WEBHOOK_10K_20K = (getgenv and getgenv().DISCORD_WEBHOOK_10K_20K) or DISCORD_WEBHOOK_URL
@@ -387,9 +390,13 @@ function Reporter.SendAlert(deals)
 
             local isHighTier10k20k = (deal.RAP >= 10000 and deal.RAP <= 20000)
             local isUnder100Plus = (deal.Profit >= 100)
+            local isRoseGift = (deal.Name:lower():find("rose gift") ~= nil)
             local targetWebhook = DISCORD_WEBHOOK_URL
 
-            if isHighTier10k20k and not isUnder100Plus then
+            -- Rose Gift → webhook khusus (channel terpisah)
+            if isRoseGift then
+                targetWebhook = DISCORD_WEBHOOK_ROSE_GIFT
+            elseif isHighTier10k20k and not isUnder100Plus then
                 targetWebhook = DISCORD_WEBHOOK_10K_20K
             end
 
