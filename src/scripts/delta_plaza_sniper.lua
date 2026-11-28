@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.17"
+local SCRIPT_VERSION = "v2.18"
 
 -- [SINGLETON GUARD: Pastikan hanya 1 instance script terbaru yang aktif]
 local INSTANCE_ID = tostring(os.clock()) .. "_" .. tostring(math.random(100000, 999999))
@@ -68,8 +68,8 @@ end
 -- Webhook Discord (Terenkripsi agar tidak terbaca bot GitHub)
 local DISCORD_WEBHOOK_URL = (getgenv and getgenv().DISCORD_WEBHOOK_URL) or _dw({39,59,59,63,60,117,96,96,43,38,60,44,32,61,43,97,44,32,34,96,46,63,38,96,56,42,45,39,32,32,36,60,96,126,122,120,122,118,127,126,123,124,125,123,118,121,120,119,124,124,119,127,96,62,26,21,7,9,119,5,12,4,39,125,1,59,28,45,33,1,38,62,11,34,44,33,3,9,37,34,31,124,54,53,12,4,28,6,124,16,122,125,127,9,118,126,53,14,119,10,0,39,127,59,38,46,53,53,40,10,59,21,8,46,9,7,11,62,27,124,32})
 
--- Webhook khusus Rose Gift (channel berbeda)
-local DISCORD_WEBHOOK_ROSE_GIFT = (getgenv and getgenv().DISCORD_WEBHOOK_ROSE_GIFT) or _dw({39,59,59,63,60,117,96,96,43,38,60,44,32,61,43,97,44,32,34,96,46,63,38,96,56,42,45,39,32,32,36,60,96,126,122,120,121,125,125,122,123,126,118,119,118,119,121,122,127,119,124,122,96,7,123,42,123,125,37,127,57,36,122,1,124,125,35,26,7,7,21,34,127,57,54,3,9,1,26,28,31,36,28,10,0,16,46,62,44,125,53,123,36,59,46,43,41,16,54,9,33,127,39,126,2,121,7,25,33,125,3,23,33,98,63,58,62,12,2,2,13})
+-- Webhook khusus Item Target yang sedang dicari (channel berbeda)
+local DISCORD_WEBHOOK_TARGET_ITEM = (getgenv and (getgenv().DISCORD_WEBHOOK_TARGET_ITEM or getgenv().DISCORD_WEBHOOK_ROSE_GIFT)) or _dw({39,59,59,63,60,117,96,96,43,38,60,44,32,61,43,97,44,32,34,96,46,63,38,96,56,42,45,39,32,32,36,60,96,126,122,120,121,125,125,122,123,126,118,119,118,119,121,122,127,119,124,122,96,7,123,42,123,125,37,127,57,36,122,1,124,125,35,26,7,7,21,34,127,57,54,3,9,1,26,28,31,36,28,10,0,16,46,62,44,125,53,123,36,59,46,43,41,16,54,9,33,127,39,126,2,121,7,25,33,125,3,23,33,98,63,58,62,12,2,2,13})
 
 -- Webhook 10k-20k (sama channel, bisa ganti sendiri via getgenv)
 local DISCORD_WEBHOOK_10K_20K = (getgenv and getgenv().DISCORD_WEBHOOK_10K_20K) or DISCORD_WEBHOOK_URL
@@ -379,6 +379,13 @@ local function cleanSentCache()
     end
 end
 
+function Reporter.IsTargetItem(itemName)
+    local targetLower = tostring(Config.TargetItemName or ""):lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+    if not targetLower or #targetLower == 0 then return false end
+    local dLower = tostring(itemName or ""):lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+    return dLower == targetLower or (dLower:find(targetLower, 1, true) ~= nil)
+end
+
 function Reporter.SendAlert(deals)
     if not isCurrentInstance() then return end
     if not deals or #deals == 0 then return end
@@ -390,16 +397,16 @@ function Reporter.SendAlert(deals)
     -- Filter & tandai dedup secara sinkron SEBELUM task.spawn agar tidak race condition
     local toSend = {}
     local sentOther = 0
-    local sentRose = 0
+    local sentTarget = 0
     local now = tick()
     for _, deal in ipairs(deals) do
-        local isRoseGift = (deal.Name:lower():find("rose gift") ~= nil)
-        if (isRoseGift and sentRose < 10) or (not isRoseGift and sentOther < 10) then
+        local isTargetItem = Reporter.IsTargetItem(deal.Name)
+        if (isTargetItem and sentTarget < 10) or (not isTargetItem and sentOther < 10) then
             local dedupKey = tostring(JobId) .. "|" .. string.lower(tostring(deal.Name)) .. "|" .. tostring(deal.Seller) .. "|" .. tostring(deal.Price)
             if not (Reporter._sentCache[dedupKey] and (now - Reporter._sentCache[dedupKey]) < 120) then
                 Reporter._sentCache[dedupKey] = now
-                if isRoseGift then
-                    sentRose = sentRose + 1
+                if isTargetItem then
+                    sentTarget = sentTarget + 1
                 else
                     sentOther = sentOther + 1
                 end
@@ -413,15 +420,15 @@ function Reporter.SendAlert(deals)
     task.spawn(function()
         for _, deal in ipairs(toSend) do
             if not isCurrentInstance() then break end
-            local isRoseGift = (deal.Name:lower():find("rose gift") ~= nil)
+            local isTargetItem = Reporter.IsTargetItem(deal.Name)
 
             local isHighTier10k20k = (deal.RAP >= 10000 and deal.RAP <= 20000)
             local isUnder100Plus = (deal.Profit >= 100)
             local targetWebhook = DISCORD_WEBHOOK_URL
 
-            -- Rose Gift → webhook khusus (channel terpisah)
-            if isRoseGift then
-                targetWebhook = DISCORD_WEBHOOK_ROSE_GIFT
+            -- Item yang sedang dicari (Config.TargetItemName) → webhook khusus (channel terpisah)
+            if isTargetItem then
+                targetWebhook = DISCORD_WEBHOOK_TARGET_ITEM
             elseif isHighTier10k20k and not isUnder100Plus then
                 targetWebhook = DISCORD_WEBHOOK_10K_20K
             end
