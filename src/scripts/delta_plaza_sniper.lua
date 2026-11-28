@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.13"
+local SCRIPT_VERSION = "v2.14"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -68,7 +68,8 @@ local Config = {
     MinProfit300 = 100,              -- Minimal untung untuk item value 300+
     AutoScanOnTeleport = true,        -- Otomatis scan booth begitu tiba di server baru
     LastScannedJobId = "",
-    AutoHuntEnabled = false,          -- Loop otomatis setiap AutoHuntInterval detik
+    AutoHuntEnabled = false,          -- Status aktif runtime
+    ShouldResumeAutoHunt = (getgenv and getgenv().BB_AUTO_HUNT == true) or false, -- Auto-resume saat tiba di server baru
     AutoHuntInterval = 180,           -- Jeda antar pencarian (detik). Default: 3 menit
     AutoHuntThread = nil,             -- Referensi coroutine loop (untuk stop)
 }
@@ -700,15 +701,20 @@ function IndexHunter.PrepareTeleportQueue()
     pcall(function()
         if getgenv then
             getgenv().BB_TARGET = Config.TargetItemName
+            getgenv().BB_AUTO_HUNT = Config.AutoHuntEnabled  -- simpan status auto hunt
         end
     end)
 
     local targetItem = Config.TargetItemName
+    local autoHunt = Config.AutoHuntEnabled and "true" or "false"
     local payload = [[
         repeat task.wait(0.5) until game:IsLoaded()
         task.wait(1.5)
         pcall(function()
-            if getgenv then getgenv().BB_TARGET = "]] .. targetItem .. [[" end
+            if getgenv then
+                getgenv().BB_TARGET = "]] .. targetItem .. [["
+                getgenv().BB_AUTO_HUNT = ]] .. autoHunt .. [[
+            end
             loadstring(game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/scripts/delta_plaza_sniper.lua"))()
         end)
     ]]
@@ -1401,6 +1407,10 @@ function UI.Build()
     -- ==== AUTO HUNT LOOP LOGIC ====
     local function stopAutoHunt()
         Config.AutoHuntEnabled = false
+        Config.ShouldResumeAutoHunt = false
+        pcall(function()
+            if getgenv then getgenv().BB_AUTO_HUNT = false end
+        end)
         if Config.AutoHuntThread then
             pcall(function() task.cancel(Config.AutoHuntThread) end)
             Config.AutoHuntThread = nil
@@ -1411,25 +1421,36 @@ function UI.Build()
         statusLabel.Text = "Auto Hunt dihentikan."
     end
 
-    local function startAutoHunt()
+    local function startAutoHunt(skipFirstHunt)
         if Config.AutoHuntEnabled then return end
         Config.AutoHuntEnabled = true
+        pcall(function()
+            if getgenv then getgenv().BB_AUTO_HUNT = true end
+        end)
         btnAutoHunt.BackgroundColor3 = Color3.fromRGB(220, 38, 38)
         btnAutoHunt.Text = "■ STOP HUNT"
         statusLabel.Text = "✅ Auto Hunt aktif! Mencari setiap " .. math.floor(Config.AutoHuntInterval / 60) .. " menit."
-        Util.Notify("🔁 Auto Hunt Aktif", "Mencari '" .. Config.TargetItemName .. "' setiap 3 menit!", true)
+        if not skipFirstHunt then
+            Util.Notify("🔁 Auto Hunt Aktif", "Mencari '" .. Config.TargetItemName .. "' setiap 3 menit!", true)
+        else
+            Util.Notify("🔁 Auto Hunt Lanjut", "Tiba di server baru! Cari '" .. Config.TargetItemName .. "' lagi dalam 3 menit.", true)
+        end
 
         Config.AutoHuntThread = task.spawn(function()
+            local firstLoop = true
             while Config.AutoHuntEnabled do
-                -- Tutup UI script agar tidak menghalangi papan Index saat mencari
-                main.Visible = false
-                local currentItem = Config.TargetItemName
-                statusLabel.Text = "🔎 Auto Hunt: Mencari '" .. currentItem .. "'..."
-                IndexHunter.FindSellerForItem(currentItem, function(msg)
-                    if Config.AutoHuntEnabled then
-                        statusLabel.Text = msg
-                    end
-                end)
+                if not (firstLoop and skipFirstHunt) then
+                    -- Tutup UI script agar tidak menghalangi papan Index saat mencari
+                    main.Visible = false
+                    local currentItem = Config.TargetItemName
+                    statusLabel.Text = "🔎 Auto Hunt: Mencari '" .. currentItem .. "'..."
+                    IndexHunter.FindSellerForItem(currentItem, function(msg)
+                        if Config.AutoHuntEnabled then
+                            statusLabel.Text = msg
+                        end
+                    end)
+                end
+                firstLoop = false
 
                 if not Config.AutoHuntEnabled then break end
 
@@ -1604,17 +1625,22 @@ function UI.Build()
         end)
     end)
 
-    return updateDealsUI
+    return updateDealsUI, startAutoHunt
 end
 
 -- [7] BOOTSTRAP & AUTO-SCAN PADA SERVER BARU
 local ok, err = pcall(function()
-    local renderFn = UI.Build()
+    local renderFn, startAutoHuntFn = UI.Build()
     Util.UnfreezePlayer()
     Util.Notify("🎯 Index Hunter Ready", "Panel siap! Klik 🎯 di kiri layar.", true)
     print("==========================================================")
     print("🎯 BLADE BALL INDEX HUNTER & PURE SCANNER BERHASIL AKTIF!")
     print("==========================================================")
+
+    -- Lanjutkan Auto Hunt otomatis jika sebelumnya aktif sebelum teleport
+    if Config.ShouldResumeAutoHunt and startAutoHuntFn then
+        startAutoHuntFn(true)
+    end
 
     -- Auto-Scan saat baru mendarat di server baru (jika aktif oleh QueueOnTeleport)
     task.spawn(function()
