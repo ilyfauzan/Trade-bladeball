@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.10"
+local SCRIPT_VERSION = "v2.11"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -60,7 +60,7 @@ local DISCORD_WEBHOOK_10K_20K = (getgenv and getgenv().DISCORD_WEBHOOK_10K_20K) 
 
 -- [KONFIGURASI UTAMA]
 local Config = {
-    TargetItemName = "Rose Gift", -- Pedang default yang dicari di papan Index (ganti sesuai keinginan)
+    TargetItemName = (getgenv and getgenv().BB_TARGET and #getgenv().BB_TARGET > 0 and getgenv().BB_TARGET) or "Rose Gift", -- Dibaca dari getgenv jika ada (persist antar teleport)
     MinProfit200 = 70,               -- Minimal untung untuk item value 200-299
     MinProfit300 = 100,              -- Minimal untung untuk item value 300+
     AutoScanOnTeleport = true,        -- Otomatis scan booth begitu tiba di server baru
@@ -662,10 +662,19 @@ local IndexHunter = {
 
 -- Menangani auto-execute script ke server baru saat teleport
 function IndexHunter.PrepareTeleportQueue()
+    -- Simpan nama item target ke getgenv agar terbawa ke server baru
+    pcall(function()
+        if getgenv then
+            getgenv().BB_TARGET = Config.TargetItemName
+        end
+    end)
+
+    local targetItem = Config.TargetItemName
     local payload = [[
         repeat task.wait(0.5) until game:IsLoaded()
         task.wait(1.5)
         pcall(function()
+            if getgenv then getgenv().BB_TARGET = "]] .. targetItem .. [[" end
             loadstring(game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/scripts/delta_plaza_sniper.lua"))()
         end)
     ]]
