@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.15"
+local SCRIPT_VERSION = "v2.16"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -464,22 +464,55 @@ local Scanner = {
     AllListings = {}
 }
 
-function Scanner.DetectCategory(frame, itemName)
-    local lower = tostring(itemName or ""):lower()
-    if lower:find("explosion") or lower:find("blast") or lower:find("detonation") or lower:find("burst") then
-        return "Explosion"
-    end
-    if lower:find("emote") or lower:find("dance") or lower:find("giggle") or lower:find("sit") then
-        return "Emote"
-    end
+local function normalizeCatText(raw)
+    local s = tostring(raw or ""):lower()
+    if s:find("explosion") or s:find("explo") then return "Explosion" end
+    if s:find("emote") then return "Emote" end
+    if s:find("sword") or s:find("blade") then return "Sword" end
+    return nil
+end
 
+function Scanner.DetectCategory(frame, itemName, skipNameGuess)
+    -- 1. Cek atribut & StringValue / TextLabel kategori di UI kartu booth
     if frame then
+        for _, obj in ipairs({ frame, frame:FindFirstChild("Frame") }) do
+            if obj then
+                for _, attrName in ipairs({ "Category", "Type", "ItemType", "ItemCategory", "Class" }) do
+                    local attr = obj:GetAttribute(attrName)
+                    local cat = normalizeCatText(attr)
+                    if cat then return cat end
+                end
+            end
+        end
+
+        for _, desc in ipairs(frame:GetDescendants()) do
+            if desc:IsA("StringValue") then
+                local n = desc.Name:lower()
+                if n:find("cat") or n:find("type") or n:find("class") then
+                    local cat = normalizeCatText(desc.Value)
+                    if cat then return cat end
+                end
+            elseif desc:IsA("TextLabel") and desc.Name ~= "ItemName" and desc.Name ~= "Amount" then
+                local cat = normalizeCatText(desc.Text)
+                if cat then return cat end
+            end
+        end
+
+        -- 2. Cek isi ViewportFrame 3D di kartu booth
         local vp = frame:FindFirstChildWhichIsA("ViewportFrame", true)
         if vp then
-            if vp:FindFirstChildWhichIsA("Humanoid", true) or vp:FindFirstChild("HumanoidRootPart", true) then
+            if vp:FindFirstChildWhichIsA("Humanoid", true)
+                or vp:FindFirstChild("HumanoidRootPart", true)
+                or vp:FindFirstChildWhichIsA("AnimationController", true)
+                or vp:FindFirstChildWhichIsA("Animator", true) then
                 return "Emote"
             end
-            if vp:FindFirstChildWhichIsA("ParticleEmitter", true) or vp:FindFirstChildWhichIsA("Trail", true) then
+            if vp:FindFirstChildWhichIsA("ParticleEmitter", true)
+                or vp:FindFirstChildWhichIsA("Trail", true)
+                or vp:FindFirstChildWhichIsA("Beam", true)
+                or vp:FindFirstChildWhichIsA("Fire", true)
+                or vp:FindFirstChildWhichIsA("Smoke", true)
+                or vp:FindFirstChildWhichIsA("Sparkles", true) then
                 return "Explosion"
             end
             if vp:FindFirstChildWhichIsA("MeshPart", true) or vp:FindFirstChildWhichIsA("SpecialMesh", true) then
@@ -488,36 +521,68 @@ function Scanner.DetectCategory(frame, itemName)
         end
     end
 
-    if lower:find("blade") or lower:find("sword") or lower:find("katana") or lower:find("scythe") or lower:find("axe") or lower:find("rapier") or lower:find("hammer") or lower:find("bat") then
-        return "Sword"
+    -- 3. Fallback kata kunci nama (HANYA jika item tidak punya banyak jenis kembar)
+    if not skipNameGuess then
+        local lower = tostring(itemName or ""):lower()
+        if lower:find("explosion") or lower:find("blast") or lower:find("detonation") or lower:find("burst") then
+            return "Explosion"
+        end
+        if lower:find("emote") or lower:find("dance") or lower:find("giggle") or lower:find("sit") then
+            return "Emote"
+        end
+        if lower:find("blade") or lower:find("sword") or lower:find("katana") or lower:find("scythe") or lower:find("axe") or lower:find("rapier") or lower:find("hammer") or lower:find("bat") then
+            return "Sword"
+        end
     end
     return "Unknown"
 end
 
-function Scanner.GetRapValue(itemName, category, price)
+function Scanner.GetRapValue(itemName, category, price, frame)
     if not itemName or #itemName == 0 then return 0, "Unknown" end
     price = tonumber(price) or 0
 
     local kSpaced = itemName:lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
     local kClean = itemName:lower():gsub("%s+", "")
-    local catLower = category and category:lower() or "unknown"
 
     local entry = RAP_DATABASE[kSpaced] or RAP_DATABASE[kClean]
     if type(entry) == "table" then
         local variants = {}
+        local baseCats = {}
         for cName, cVal in pairs(entry) do
             local num = tonumber(cVal) or 0
-            if num > 0 then table.insert(variants, { type = tostring(cName), val = num }) end
+            if num > 0 then
+                local cStr = tostring(cName)
+                table.insert(variants, { type = cStr, val = num })
+                local base = cStr:match("^(%a+)") or cStr
+                baseCats[base:lower()] = true
+            end
         end
 
         if #variants > 0 then
+            -- Hitung apakah item ini punya >1 jenis kategori berbeda (misal Sword + Emote)
+            local distinctCatCount = 0
+            for _ in pairs(baseCats) do distinctCatCount = distinctCatCount + 1 end
+            local isMultiCategory = distinctCatCount > 1
+
+            -- Jika nama kembar di beberapa kategori, JANGAN nebak dari kata "Blade"/"Sword" di nama!
+            local detectedCat = frame and Scanner.DetectCategory(frame, itemName, isMultiCategory) or category
+            local catLower = detectedCat and detectedCat:lower() or "unknown"
+
             local candidates = {}
             if catLower ~= "unknown" then
                 for _, v in ipairs(variants) do
                     if v.type:lower():find(catLower) then table.insert(candidates, v) end
                 end
             end
-            if #candidates == 0 then candidates = variants end
+
+            -- Anti-false-positive: jika item punya beberapa kategori tapi UI booth tidak jelas jenisnya,
+            -- JANGAN menebak pakai harga terdekat! Skip supaya webhook tidak salah kirim.
+            if #candidates == 0 then
+                if isMultiCategory then
+                    return 0, "Ambiguous"
+                end
+                candidates = variants
+            end
 
             local bestVal, bestDiff = candidates[1].val, math.abs(price - candidates[1].val)
             local bestCat = candidates[1].type
@@ -643,7 +708,7 @@ function Scanner.ScanAllBooths(statusCallback)
 
                             if #itemName > 0 and itemName ~= "ItemName" and price > 0 then
                                 local detectedCat = Scanner.DetectCategory(frame, itemName)
-                                local rap, resCat = Scanner.GetRapValue(itemName, detectedCat, price)
+                                local rap, resCat = Scanner.GetRapValue(itemName, detectedCat, price, frame)
                                 local category = resCat or detectedCat
                                 local profit = (rap > 0) and (rap - price) or 0
                                 local discountPct = (rap > 0) and math.floor(((rap - price) / rap) * 100) or 0
