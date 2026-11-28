@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.20"
+local SCRIPT_VERSION = "v2.21"
 
 -- [SINGLETON GUARD: Pastikan hanya 1 instance script terbaru yang aktif]
 local INSTANCE_ID = tostring(os.clock()) .. "_" .. tostring(math.random(100000, 999999))
@@ -404,7 +404,7 @@ function Reporter.SendAlert(deals)
     local now = tick()
     for _, deal in ipairs(deals) do
         local isTargetItem = Reporter.IsTargetItem(deal.Name)
-        if (isTargetItem and sentTarget < 10) or (not isTargetItem and sentOther < 10) then
+        if (isTargetItem and sentTarget < 25) or (not isTargetItem and sentOther < 25) then
             local dedupKey = tostring(JobId) .. "|" .. string.lower(tostring(deal.Name)) .. "|" .. tostring(deal.Seller) .. "|" .. tostring(deal.Price)
             if not (Reporter._sentCache[dedupKey] and (now - Reporter._sentCache[dedupKey]) < 120) then
                 Reporter._sentCache[dedupKey] = now
@@ -686,11 +686,12 @@ function Scanner.ScanAllBooths(statusCallback)
     if statusCallback then statusCallback("Mencari booth aktif...") end
 
     local activeStands = {}
+    local seenStands = {}
     pcall(function()
         for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj.Name == "Stands" and obj:IsA("Folder") or obj:IsA("Model") then
+            if (obj.Name == "Stands" or obj.Name == "Booths") and (obj:IsA("Folder") or obj:IsA("Model")) then
                 for _, s in ipairs(obj:GetChildren()) do
-                    if s:IsA("Model") or s:IsA("Folder") then
+                    if (s:IsA("Model") or s:IsA("Folder")) and not seenStands[s] then
                         local owner = s:GetAttribute("Owner") or s:GetAttribute("Player") or s:GetAttribute("Username")
                         if not owner then
                             for _, desc in ipairs(s:GetDescendants()) do
@@ -701,6 +702,7 @@ function Scanner.ScanAllBooths(statusCallback)
                             end
                         end
                         if owner and tostring(owner) ~= LocalPlayer.Name then
+                            seenStands[s] = true
                             table.insert(activeStands, { Stand = s, Owner = tostring(owner) })
                         end
                     end
@@ -711,32 +713,64 @@ function Scanner.ScanAllBooths(statusCallback)
 
     local foundDeals = {}
     local allFound = {}
+    local scannedBooths = 0
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local startCFrame = hrp and hrp.CFrame
+    local didMove = false
 
     for i, item in ipairs(activeStands) do
-        if statusCallback then statusCallback(string.format("Stealth scan booth %d/%d (@%s)", i, #activeStands, item.Owner)) end
+        if statusCallback then statusCallback(string.format("Scan booth %d/%d (@%s)...", i, #activeStands, item.Owner)) end
 
         pcall(function()
             local prompt = item.Stand:FindFirstChildWhichIsA("ProximityPrompt", true)
             if prompt then
-                -- Stealth Mode: Buka booth dari jarak jauh tanpa memindahkan karakter!
+                local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+                local boothGui = pGui and pGui:WaitForChild("Booth", 2.0)
+                local playersBooth = boothGui and boothGui:WaitForChild("PlayersBooth", 1.5)
+                local scrollList = playersBooth and playersBooth:WaitForChild("ScrollingList", 1.5)
+
+                -- Pastikan UI booth sebelumnya sudah tertutup sebelum buka booth berikutnya
+                if playersBooth and playersBooth.Visible then
+                    local oldClose = playersBooth:FindFirstChild("Close")
+                    if oldClose then Util.SafeClickButton(oldClose) end
+                    local tClose0 = tick()
+                    while playersBooth.Visible and tick() - tClose0 < 0.6 do
+                        task.wait(0.05)
+                    end
+                end
+
+                -- 1. Coba Stealth Mode dulu (tanpa memindahkan karakter)
                 pcall(function()
                     prompt.MaxActivationDistance = 99999
                     prompt.RequiresLineOfSight = false
                 end)
                 Util.FirePrompt(prompt)
 
-                local pGui = LocalPlayer:FindFirstChild("PlayerGui")
-                local boothGui = pGui and pGui:WaitForChild("Booth", 2.0)
-                local playersBooth = boothGui and boothGui:WaitForChild("PlayersBooth", 1.5)
-                local scrollList = playersBooth and playersBooth:WaitForChild("ScrollingList", 1.5)
-
-                -- Tunggu sebentar hingga UI Booth muncul
                 local tWait = tick()
-                while playersBooth and not playersBooth.Visible and tick() - tWait < 1.2 do
-                    task.wait(0.1)
+                while playersBooth and not playersBooth.Visible and tick() - tWait < 0.6 do
+                    task.wait(0.08)
+                end
+
+                -- 2. Fallback: jika server menolak prompt jarak jauh, dekati booth lalu buka
+                if playersBooth and not playersBooth.Visible then
+                    local standPart = prompt.Parent and (prompt.Parent:IsA("BasePart") and prompt.Parent or prompt.Parent:FindFirstChildWhichIsA("BasePart"))
+                        or item.Stand:FindFirstChildWhichIsA("BasePart", true)
+                    hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    if standPart and hrp then
+                        hrp.CFrame = standPart.CFrame * CFrame.new(0, 3, 5)
+                        didMove = true
+                        task.wait(0.18)
+                        Util.FirePrompt(prompt)
+
+                        local tNear = tick()
+                        while playersBooth and not playersBooth.Visible and tick() - tNear < 1.2 do
+                            task.wait(0.08)
+                        end
+                    end
                 end
 
                 if scrollList and playersBooth and playersBooth.Visible then
+                    scannedBooths = scannedBooths + 1
                     local sellerName = item.Owner
                     local top = playersBooth:FindFirstChild("Top")
                     if top and top:FindFirstChild("PlayerName") then
@@ -785,15 +819,27 @@ function Scanner.ScanAllBooths(statusCallback)
                         end
                     end
 
-                    -- Tutup booth UI
+                    -- Tutup booth UI dan tunggu sampai benar-benar tertutup
                     pcall(function()
                         local closeBtn = playersBooth:FindFirstChild("Close")
                         if closeBtn then Util.SafeClickButton(closeBtn) end
                     end)
+                    local tClose = tick()
+                    while playersBooth.Visible and tick() - tClose < 0.6 do
+                        task.wait(0.05)
+                    end
                     Util.UnfreezePlayer()
-                    task.wait(0.25)
+                    task.wait(0.15)
                 end
             end
+        end)
+    end
+
+    -- Kembalikan posisi karakter jika tadi sempat mendekati booth jauh
+    if didMove and startCFrame then
+        pcall(function()
+            local curHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if curHrp then curHrp.CFrame = startCFrame end
         end)
     end
 
@@ -804,10 +850,10 @@ function Scanner.ScanAllBooths(statusCallback)
 
     if #foundDeals > 0 then
         Util.PlayChime()
-        Util.Notify("🔥 " .. #foundDeals .. " DEAL UNDER RAP!", string.format("Terbaik: %s untung +%s token!", foundDeals[1].Name, Util.FormatNumber(foundDeals[1].Profit)), true)
+        Util.Notify("🔥 " .. #foundDeals .. " DEAL UNDER RAP!", string.format("(%d/%d booth, %d item) Terbaik: %s +%s", scannedBooths, #activeStands, #allFound, foundDeals[1].Name, Util.FormatNumber(foundDeals[1].Profit)), true)
         Reporter.SendAlert(foundDeals)
     else
-        Util.Notify("Scan Selesai", string.format("Memeriksa %d item. Tidak ada under RAP di server ini.", #allFound))
+        Util.Notify("Scan Selesai", string.format("Memeriksa %d/%d booth (%d item). Tidak ada under RAP.", scannedBooths, #activeStands, #allFound))
     end
 
     if statusCallback then statusCallback("Scan Selesai!") end
