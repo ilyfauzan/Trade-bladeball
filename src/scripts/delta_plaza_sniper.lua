@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.8"
+local SCRIPT_VERSION = "v2.9"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -197,7 +197,6 @@ function Util.SafeClickButton(btn)
             -- Fallback jika getconnections tidak tersedia
             if firesignal then
                 pcall(function() firesignal(btn.Activated) end)
-                pcall(function() firesignal(btn.MouseButton1Click) end)
                 return
             end
         end
@@ -949,50 +948,92 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         end
     end
 
-    task.wait(0.6)
+    -- Tunggu lebih lama agar halaman detail item selesai load sepenuhnya
+    task.wait(1.5)
+
+    -- [HELPER] Klik SATU sinyal saja untuk Find Seller - jangan pernah double-fire!
+    local function PureSingleClickFindSeller(btn)
+        if not btn or not btn.Parent then return false end
+        local clicked = false
+        pcall(function()
+            if getconnections then
+                -- Prioritas 1: Coba fire sinyal Activated jika ada connection
+                local actConns = getconnections(btn.Activated)
+                if #actConns > 0 then
+                    if firesignal then
+                        firesignal(btn.Activated)
+                    else
+                        actConns[1]:Fire()
+                    end
+                    clicked = true
+                    return
+                end
+                -- Prioritas 2: Coba fire MouseButton1Click jika ada connection
+                local clickConns = getconnections(btn.MouseButton1Click)
+                if #clickConns > 0 then
+                    if firesignal then
+                        firesignal(btn.MouseButton1Click)
+                    else
+                        clickConns[1]:Fire()
+                    end
+                    clicked = true
+                    return
+                end
+            end
+            -- Fallback jika getconnections tidak tersedia: fire Activated saja sekali
+            if firesignal then
+                firesignal(btn.Activated)
+                clicked = true
+            end
+        end)
+        return clicked
+    end
 
     -- [3] Cari dan klik tombol "Find Seller" (Orange button di sebelah kanan)
     if statusCallback then statusCallback("Mencari tombol 'Find Seller'...") end
     local findSellerBtn = nil
 
-    for _, desc in ipairs(indexGui:GetDescendants()) do
-        if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and Util.IsActuallyVisible(desc) then
-            local t = (desc:IsA("TextButton") and desc.Text or ""):lower()
-            local n = desc.Name:lower()
-            for _, lbl in ipairs(desc:GetChildren()) do
-                if lbl:IsA("TextLabel") then t = t .. " " .. lbl.Text:lower() end
-            end
-            if t:find("find seller") or n:find("findseller") or t:find("seller") then
-                findSellerBtn = desc
-                break
-            end
-        end
-    end
-
-    if not findSellerBtn then
-        -- Periksa seluruh PlayerGui jika tombol berada di luar indexGui
-        for _, gui in ipairs(pGui:GetChildren()) do
-            if gui:IsA("ScreenGui") and gui.Enabled and gui ~= indexGui and gui.Name ~= "BBSniperCleanV1" then
-                for _, desc in ipairs(gui:GetDescendants()) do
-                    if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and Util.IsActuallyVisible(desc) then
-                        local t = (desc:IsA("TextButton") and desc.Text or ""):lower()
-                        for _, lbl in ipairs(desc:GetChildren()) do
-                            if lbl:IsA("TextLabel") then t = t .. " " .. lbl.Text:lower() end
-                        end
-                        if t:find("find seller") then
-                            findSellerBtn = desc
-                            break
-                        end
+    -- Fungsi pencarian komprehensif: cek teks button, teks child TextLabel, dan nama object
+    local function searchForFindSellerBtn(guiRoot)
+        for _, desc in ipairs(guiRoot:GetDescendants()) do
+            if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and Util.IsActuallyVisible(desc) then
+                local n = desc.Name:lower()
+                local t = (desc:IsA("TextButton") and desc.Text or ""):lower()
+                -- Cek teks di child TextLabel (untuk ImageButton dengan teks di dalam)
+                for _, child in ipairs(desc:GetDescendants()) do
+                    if child:IsA("TextLabel") then
+                        t = t .. " " .. child.Text:lower()
                     end
                 end
+                -- Match: nama atau teks mengandung kata kunci Find Seller
+                if n:find("findseller") or n:find("find_seller") or n:find("find") and n:find("sell")
+                    or t:find("find seller") or t:find("findseller")
+                    or (t:find("find") and t:find("sell")) then
+                    return desc
+                end
             end
-            if findSellerBtn then break end
+        end
+        return nil
+    end
+
+    -- Cari dulu di dalam indexGui
+    findSellerBtn = searchForFindSellerBtn(indexGui)
+
+    if not findSellerBtn then
+        -- Cari di seluruh PlayerGui (tombol mungkin ada di ScreenGui berbeda)
+        for _, gui in ipairs(pGui:GetChildren()) do
+            if gui:IsA("ScreenGui") and gui.Enabled and gui ~= indexGui and gui.Name ~= "BBSniperCleanV1" then
+                findSellerBtn = searchForFindSellerBtn(gui)
+                if findSellerBtn then break end
+            end
         end
     end
 
     if findSellerBtn then
-        if statusCallback then statusCallback("⚡ Menekan 'Find Seller'...") end
-        Util.SafeClickButton(findSellerBtn)
+        if statusCallback then statusCallback("⚡ Menekan 'Find Seller' (1x klik bersih)...") end
+        -- PENTING: Hanya 1 klik bersih! Jangan pakai SafeClickButton di sini
+        -- karena SafeClickButton bisa fire beberapa sinyal sekaligus → server rate-limit
+        PureSingleClickFindSeller(findSellerBtn)
         task.wait(0.5)
 
         -- [4] MENANGANI NOTIFICATION POPUP ("A seller has been found! Would you like to teleport to their server?")
