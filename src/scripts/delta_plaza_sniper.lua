@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.9"
+local SCRIPT_VERSION = "v2.10"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -60,7 +60,7 @@ local DISCORD_WEBHOOK_10K_20K = (getgenv and getgenv().DISCORD_WEBHOOK_10K_20K) 
 
 -- [KONFIGURASI UTAMA]
 local Config = {
-    TargetItemName = "Prince Blade", -- Pedang default yang dicari di papan Index
+    TargetItemName = "Rose Gift", -- Pedang default yang dicari di papan Index (ganti sesuai keinginan)
     MinProfit200 = 70,               -- Minimal untung untuk item value 200-299
     MinProfit300 = 100,              -- Minimal untung untuk item value 300+
     AutoScanOnTeleport = true,        -- Otomatis scan booth begitu tiba di server baru
