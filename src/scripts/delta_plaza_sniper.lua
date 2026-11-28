@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.11"
+local SCRIPT_VERSION = "v2.12"
 
 -- [PING AWAL: Konfirmasi script berhasil dimuat sebelum apapun berjalan]
 local _sg = game:GetService("StarterGui")
@@ -347,16 +347,43 @@ end
 task.spawn(Util.SyncBbValues)
 
 -- [3] MODULE: DISCORD WEBHOOK REPORTER
-local Reporter = {}
+local Reporter = {
+    -- Cache untuk anti-double: key = "itemName|seller|price", value = timestamp terakhir dikirim
+    _sentCache = {}
+}
+
+-- Bersihkan cache yang sudah lebih dari 90 detik (auto-GC)
+local function cleanSentCache()
+    local now = tick()
+    for key, ts in pairs(Reporter._sentCache) do
+        if now - ts > 90 then
+            Reporter._sentCache[key] = nil
+        end
+    end
+end
 
 function Reporter.SendAlert(deals)
     if not deals or #deals == 0 then return end
     local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
     if not req then return end
 
+    cleanSentCache()
+
     task.spawn(function()
+        local sentCount = 0
         for i, deal in ipairs(deals) do
-            if i > 10 then break end
+            if sentCount >= 10 then break end
+
+            -- [DEDUP] Buat key unik per deal berdasarkan item+seller+harga
+            local dedupKey = string.lower(tostring(deal.Name)) .. "|" .. tostring(deal.Seller) .. "|" .. tostring(deal.Price)
+            local now = tick()
+
+            -- Skip jika deal yang sama sudah dikirim dalam 90 detik terakhir
+            if Reporter._sentCache[dedupKey] and (now - Reporter._sentCache[dedupKey]) < 90 then
+                continue
+            end
+            Reporter._sentCache[dedupKey] = now
+            sentCount = sentCount + 1
 
             local isHighTier10k20k = (deal.RAP >= 10000 and deal.RAP <= 20000)
             local isUnder100Plus = (deal.Profit >= 100)
