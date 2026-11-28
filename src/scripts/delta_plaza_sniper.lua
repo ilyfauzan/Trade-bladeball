@@ -15,7 +15,7 @@
     ══════════════════════════════════════════════════════════════════════════════
 --]]
 
-local SCRIPT_VERSION = "v2.19"
+local SCRIPT_VERSION = "v2.20"
 
 -- [SINGLETON GUARD: Pastikan hanya 1 instance script terbaru yang aktif]
 local INSTANCE_ID = tostring(os.clock()) .. "_" .. tostring(math.random(100000, 999999))
@@ -77,6 +77,7 @@ local DISCORD_WEBHOOK_10K_20K = (getgenv and getgenv().DISCORD_WEBHOOK_10K_20K) 
 -- [KONFIGURASI UTAMA]
 local Config = {
     TargetItemName = (getgenv and getgenv().BB_TARGET and #getgenv().BB_TARGET > 0 and getgenv().BB_TARGET) or "Rose Gift", -- Dibaca dari getgenv jika ada (persist antar teleport)
+    TargetCategory = (getgenv and getgenv().BB_TARGET_CAT and #getgenv().BB_TARGET_CAT > 0 and getgenv().BB_TARGET_CAT) or "All", -- "All", "Sword", "Explosion", "Emote"
     MinProfit200 = 70,               -- Minimal untung untuk item value 200-299
     MinProfit300 = 100,              -- Minimal untung untuk item value 300+
     AutoScanOnTeleport = true,        -- Otomatis scan booth begitu tiba di server baru
@@ -821,10 +822,11 @@ local IndexHunter = {
 -- Menangani auto-execute script ke server baru saat teleport
 function IndexHunter.PrepareTeleportQueue()
     if not isCurrentInstance() then return end
-    -- Simpan nama item target & status auto hunt terbaru ke getgenv
+    -- Simpan nama item target, kategori, & status auto hunt terbaru ke getgenv
     pcall(function()
         if getgenv then
             getgenv().BB_TARGET = Config.TargetItemName
+            getgenv().BB_TARGET_CAT = Config.TargetCategory
             getgenv().BB_AUTO_HUNT = Config.AutoHuntEnabled
         end
     end)
@@ -834,6 +836,7 @@ function IndexHunter.PrepareTeleportQueue()
     IndexHunter._teleportQueued = true
 
     local targetItem = Config.TargetItemName
+    local targetCat = Config.TargetCategory or "All"
     local autoHunt = Config.AutoHuntEnabled and "true" or "false"
     local payload = [[
         repeat task.wait(0.5) until game:IsLoaded()
@@ -841,6 +844,7 @@ function IndexHunter.PrepareTeleportQueue()
         pcall(function()
             if getgenv then
                 getgenv().BB_TARGET = "]] .. targetItem .. [["
+                getgenv().BB_TARGET_CAT = "]] .. targetCat .. [["
                 getgenv().BB_AUTO_HUNT = ]] .. autoHunt .. [[
             end
             loadstring(game:HttpGet("https://raw.githubusercontent.com/ilyfauzan/Trade-bladeball/main/src/scripts/delta_plaza_sniper.lua?t=" .. tostring(os.time())))()
@@ -998,6 +1002,32 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         end
     end
 
+    -- Helper klik tab kategori di UI Index ("swords", "explosions", "emotes")
+    local function selectIndexTab(tabKey)
+        for _, desc in ipairs(indexGui:GetDescendants()) do
+            if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and Util.IsActuallyVisible(desc) then
+                local t = (desc:IsA("TextButton") and desc.Text or ""):lower()
+                for _, lbl in ipairs(desc:GetChildren()) do
+                    if lbl:IsA("TextLabel") then t = t .. " " .. lbl.Text:lower() end
+                end
+                if t:find(tabKey) then
+                    Util.SafeClickButton(desc)
+                    task.wait(0.4)
+                    return true
+                end
+            end
+        end
+        return false
+    end
+
+    -- Jika user memilih kategori spesifik (Sword / Explosion / Emote), klik tab-nya DULU sebelum search!
+    local catTabMap = { Sword = "swords", Explosion = "explosions", Emote = "emotes" }
+    local preferredTab = catTabMap[Config.TargetCategory or "All"]
+    if preferredTab then
+        if statusCallback then statusCallback("Memilih tab " .. Config.TargetCategory .. "...") end
+        selectIndexTab(preferredTab)
+    end
+
     if searchBox then
         -- Cari tombol search magnifying glass (ikon Q hijau) di sebelah TextBox
         local parentBox = searchBox.Parent
@@ -1024,68 +1054,83 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
         task.wait(0.7)
     end
 
-    -- Helper untuk klik item dari hasil grid (support Button, Frame InputBegan, & TouchTap)
+    -- Helper untuk klik item dari hasil grid (2-pass: Exact Match dulu, baru substring)
+    local function clickMatchingDesc(desc)
+        -- 0. Prioritas Utama Blade Ball Index: Tombol "ActivationButton" di dalam kartu item!
+        if desc.Parent then
+            local actBtn = desc.Parent:FindFirstChild("ActivationButton", true)
+            if actBtn and actBtn:IsA("GuiButton") then
+                Util.SafeClickButton(actBtn)
+                return true
+            end
+        end
+        -- 1. Jika desc sendiri adalah TextButton
+        if desc:IsA("TextButton") then
+            Util.SafeClickButton(desc)
+            return true
+        end
+        -- 2. Cek ancestor sampai 4 tingkat
+        local cur = desc.Parent
+        for _ = 1, 4 do
+            if not cur or cur == indexGui then break end
+            if cur:IsA("TextButton") or cur:IsA("ImageButton") then
+                Util.SafeClickButton(cur)
+                return true
+            end
+            cur = cur.Parent
+        end
+        -- 3. Cek tombol terbesar di dalam kartu item (sampai 3 tingkat)
+        local card = desc.Parent
+        local bestBtn, bestArea = nil, 0
+        for _ = 1, 3 do
+            if not card or card == indexGui then break end
+            for _, child in ipairs(card:GetDescendants()) do
+                if (child:IsA("TextButton") or child:IsA("ImageButton")) and Util.IsActuallyVisible(child) then
+                    local cName = child.Name:lower()
+                    if not cName:find("fav") and not cName:find("star") then
+                        local area = child.AbsoluteSize.X * child.AbsoluteSize.Y
+                        if area > bestArea then
+                            bestArea = area
+                            bestBtn = child
+                        end
+                    end
+                end
+            end
+            if bestBtn then break end
+            card = card.Parent
+        end
+        if bestBtn then
+            Util.SafeClickButton(bestBtn)
+            return true
+        end
+        -- 4. Fallback: tembak InputBegan/TouchTap langsung ke Frame kartu
+        if desc.Parent and desc.Parent:IsA("GuiObject") then
+            Util.SafeClickButton(desc.Parent)
+            if desc.Parent.Parent and desc.Parent.Parent:IsA("GuiObject") then
+                Util.SafeClickButton(desc.Parent.Parent)
+            end
+            return true
+        end
+        return false
+    end
+
     local function tryClickTargetItem()
-        local tLower = targetItemName:lower()
+        local tLower = targetItemName:lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+        -- Pass 1: EXACT MATCH (misal "lily katana" TIDAK akan klik "lily katana emote")
         for _, desc in ipairs(indexGui:GetDescendants()) do
-            if (desc:IsA("TextLabel") or desc:IsA("TextButton")) and Util.IsActuallyVisible(desc) then
-                local txt = (desc.Text or ""):lower():match("^%s*(.-)%s*$")
-                if txt == tLower or (txt:find(tLower, 1, true) and not txt:find("search")) then
-                    -- 0. Prioritas Utama Blade Ball Index: Tombol "ActivationButton" di dalam kartu item!
-                    if desc.Parent then
-                        local actBtn = desc.Parent:FindFirstChild("ActivationButton", true)
-                        if actBtn and actBtn:IsA("GuiButton") then
-                            Util.SafeClickButton(actBtn)
-                            return true
-                        end
-                    end
-                    -- 1. Jika desc sendiri adalah TextButton
-                    if desc:IsA("TextButton") then
-                        Util.SafeClickButton(desc)
-                        return true
-                    end
-                    -- 2. Cek ancestor sampai 4 tingkat
-                    local cur = desc.Parent
-                    for _ = 1, 4 do
-                        if not cur or cur == indexGui then break end
-                        if cur:IsA("TextButton") or cur:IsA("ImageButton") then
-                            Util.SafeClickButton(cur)
-                            return true
-                        end
-                        cur = cur.Parent
-                    end
-                    -- 3. Cek tombol terbesar di dalam kartu item (sampai 3 tingkat)
-                    local card = desc.Parent
-                    local bestBtn, bestArea = nil, 0
-                    for _ = 1, 3 do
-                        if not card or card == indexGui then break end
-                        for _, child in ipairs(card:GetDescendants()) do
-                            if (child:IsA("TextButton") or child:IsA("ImageButton")) and Util.IsActuallyVisible(child) then
-                                local cName = child.Name:lower()
-                                if not cName:find("fav") and not cName:find("star") then
-                                    local area = child.AbsoluteSize.X * child.AbsoluteSize.Y
-                                    if area > bestArea then
-                                        bestArea = area
-                                        bestBtn = child
-                                    end
-                                end
-                            end
-                        end
-                        if bestBtn then break end
-                        card = card.Parent
-                    end
-                    if bestBtn then
-                        Util.SafeClickButton(bestBtn)
-                        return true
-                    end
-                    -- 4. Fallback: tembak InputBegan/TouchTap langsung ke Frame kartu
-                    if desc.Parent and desc.Parent:IsA("GuiObject") then
-                        Util.SafeClickButton(desc.Parent)
-                        if desc.Parent.Parent and desc.Parent.Parent:IsA("GuiObject") then
-                            Util.SafeClickButton(desc.Parent.Parent)
-                        end
-                        return true
-                    end
+            if (desc:IsA("TextLabel") or desc:IsA("TextButton")) and desc ~= searchBox and Util.IsActuallyVisible(desc) then
+                local txt = (desc.Text or ""):lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+                if txt == tLower then
+                    if clickMatchingDesc(desc) then return true end
+                end
+            end
+        end
+        -- Pass 2: Substring fallback hanya jika tidak ada exact match sama sekali
+        for _, desc in ipairs(indexGui:GetDescendants()) do
+            if (desc:IsA("TextLabel") or desc:IsA("TextButton")) and desc ~= searchBox and Util.IsActuallyVisible(desc) then
+                local txt = (desc.Text or ""):lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+                if txt:find(tLower, 1, true) and not txt:find("search") then
+                    if clickMatchingDesc(desc) then return true end
                 end
             end
         end
@@ -1096,32 +1141,21 @@ function IndexHunter.FindSellerForItem(targetItemName, statusCallback)
     if statusCallback then statusCallback("Memilih item '" .. targetItemName .. "'...") end
     local itemClicked = tryClickTargetItem()
 
-    if not itemClicked then
-        -- Coba pindah tab kategori (Explosions / Swords / Emotes) karena item tertentu ada di tab berbeda
-        local tabNames = { "explosions", "swords", "emotes" }
+    if not itemClicked and not preferredTab then
+        -- Coba pindah tab kategori (Swords dulu, lalu Explosions, lalu Emotes)
+        local tabNames = { "swords", "explosions", "emotes" }
         for _, tabKey in ipairs(tabNames) do
-            for _, desc in ipairs(indexGui:GetDescendants()) do
-                if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and Util.IsActuallyVisible(desc) then
-                    local t = (desc:IsA("TextButton") and desc.Text or ""):lower()
-                    for _, lbl in ipairs(desc:GetChildren()) do
-                        if lbl:IsA("TextLabel") then t = t .. " " .. lbl.Text:lower() end
-                    end
-                    if t:find(tabKey) then
-                        Util.SafeClickButton(desc)
-                        task.wait(0.45)
-                        if searchBox then
-                            searchBox.Text = targetItemName
-                            if searchBtn then Util.SafeClickButton(searchBtn) end
-                            task.wait(0.45)
-                        end
-                        if tryClickTargetItem() then
-                            itemClicked = true
-                            break
-                        end
-                    end
+            if selectIndexTab(tabKey) then
+                if searchBox then
+                    searchBox.Text = targetItemName
+                    if searchBtn then Util.SafeClickButton(searchBtn) end
+                    task.wait(0.45)
+                end
+                if tryClickTargetItem() then
+                    itemClicked = true
+                    break
                 end
             end
-            if itemClicked then break end
         end
     end
 
@@ -1493,10 +1527,58 @@ function UI.Build()
         end
     end)
 
+    -- Filter Kategori Target (All / Sword / Explo / Emote) agar tidak salah pilih item kembar
+    local catRow = Instance.new("Frame")
+    catRow.Size = UDim2.new(1, -16, 0, 22)
+    catRow.Position = UDim2.new(0, 8, 0, 56)
+    catRow.BackgroundTransparency = 1
+    catRow.Parent = targetCard
+
+    local catOptions = {
+        { key = "All", label = "All" },
+        { key = "Sword", label = "🗡️ Sword" },
+        { key = "Explosion", label = "💥 Explo" },
+        { key = "Emote", label = "💃 Emote" }
+    }
+    local catButtons = {}
+    local function refreshCatButtons()
+        for _, opt in ipairs(catOptions) do
+            local b = catButtons[opt.key]
+            if b then
+                if Config.TargetCategory == opt.key then
+                    b.BackgroundColor3 = Color3.fromRGB(56, 189, 248)
+                    b.TextColor3 = Color3.fromRGB(15, 23, 42)
+                else
+                    b.BackgroundColor3 = Color3.fromRGB(30, 41, 59)
+                    b.TextColor3 = Color3.fromRGB(203, 213, 225)
+                end
+            end
+        end
+    end
+
+    for idx, opt in ipairs(catOptions) do
+        local cb = Instance.new("TextButton")
+        cb.Size = UDim2.new(0.25, -3, 1, 0)
+        cb.Position = UDim2.new((idx - 1) * 0.25, (idx > 1 and 2 or 0), 0, 0)
+        cb.Text = opt.label
+        cb.Font = Enum.Font.GothamBold
+        cb.TextSize = 8.5
+        cb.Parent = catRow
+        Instance.new("UICorner", cb).CornerRadius = UDim.new(0, 5)
+        catButtons[opt.key] = cb
+        cb.MouseButton1Click:Connect(function()
+            Config.TargetCategory = opt.key
+            pcall(function() if getgenv then getgenv().BB_TARGET_CAT = opt.key end end)
+            refreshCatButtons()
+            statusLabel.Text = "Filter jenis target → " .. opt.key
+        end)
+    end
+    refreshCatButtons()
+
     -- Tombol sekali jalan (manual)
     local btnFindSeller = Instance.new("TextButton")
     btnFindSeller.Size = UDim2.new(0.52, -4, 0, 30)
-    btnFindSeller.Position = UDim2.new(0, 8, 0, 56)
+    btnFindSeller.Position = UDim2.new(0, 8, 0, 82)
     btnFindSeller.BackgroundColor3 = Color3.fromRGB(79, 70, 229)
     btnFindSeller.TextColor3 = Color3.fromRGB(255, 255, 255)
     btnFindSeller.Text = "🚀 Cari 1x"
@@ -1508,7 +1590,7 @@ function UI.Build()
     -- Tombol AUTO HUNT LOOP ON/OFF
     local btnAutoHunt = Instance.new("TextButton")
     btnAutoHunt.Size = UDim2.new(0.48, -4, 0, 30)
-    btnAutoHunt.Position = UDim2.new(0.52, 4, 0, 56)
+    btnAutoHunt.Position = UDim2.new(0.52, 4, 0, 82)
     btnAutoHunt.BackgroundColor3 = Color3.fromRGB(22, 163, 74)
     btnAutoHunt.TextColor3 = Color3.fromRGB(255, 255, 255)
     btnAutoHunt.Text = "▶ AUTO HUNT"
@@ -1520,7 +1602,7 @@ function UI.Build()
     -- Label countdown timer
     local lblCountdown = Instance.new("TextLabel")
     lblCountdown.Size = UDim2.new(1, -16, 0, 14)
-    lblCountdown.Position = UDim2.new(0, 8, 0, 90)
+    lblCountdown.Position = UDim2.new(0, 8, 0, 116)
     lblCountdown.BackgroundTransparency = 1
     lblCountdown.Text = ""
     lblCountdown.TextColor3 = Color3.fromRGB(251, 191, 36)
@@ -1529,8 +1611,8 @@ function UI.Build()
     lblCountdown.TextXAlignment = Enum.TextXAlignment.Center
     lblCountdown.Parent = targetCard
 
-    -- Perbesar targetCard agar muat countdown label
-    targetCard.Size = UDim2.new(1, -20, 0, 110)
+    -- Perbesar targetCard agar muat filter kategori & countdown label
+    targetCard.Size = UDim2.new(1, -20, 0, 136)
 
     -- ==== AUTO HUNT LOOP LOGIC ====
     local function stopAutoHunt()
@@ -1636,8 +1718,8 @@ function UI.Build()
 
     -- SECTION: DEALS LIST DI SERVER SAAT INI
     local dealsBox = Instance.new("ScrollingFrame")
-    dealsBox.Size = UDim2.new(1, -20, 1, -256)
-    dealsBox.Position = UDim2.new(0, 10, 0, 204)
+    dealsBox.Size = UDim2.new(1, -20, 1, -282)
+    dealsBox.Position = UDim2.new(0, 10, 0, 230)
     dealsBox.BackgroundColor3 = Color3.fromRGB(14, 20, 36)
     dealsBox.ScrollBarThickness = 3
     dealsBox.Parent = main
